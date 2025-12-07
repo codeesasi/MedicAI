@@ -49,6 +49,16 @@ export default function App() {
     setAppError(null);
   };
 
+  const handleUpdateMedication = (updatedMed: Medication) => {
+    setMedications(prev => prev.map(m => m.id === updatedMed.id ? updatedMed : m));
+    setAnalysisResult(null); // Clear old analysis as data changed
+  };
+
+  const handleClearMedications = () => {
+    setMedications([]);
+    setAnalysisResult(null);
+  };
+
   const handleScanComplete = (newMeds: Medication[]) => {
     newMeds.forEach(m => handleAddMedication(m));
     setActiveTab(Tab.CABINET); // Redirect to cabinet to see results
@@ -206,6 +216,8 @@ export default function App() {
                     medications={medications} 
                     onAdd={handleAddMedication}
                     onRemove={handleRemoveMedication}
+                    onUpdate={handleUpdateMedication}
+                    onClear={handleClearMedications}
                     onAnalyzeInteractions={runAnalysis}
                   />
                 </div>

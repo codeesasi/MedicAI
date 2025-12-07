@@ -62,28 +62,20 @@ const extractJson = (text: string, type: 'array' | 'object'): any => {
 
 /**
  * Workflow 1: Prescription Analysis (Vision + OCR)
+ * SWITCHED TO GEMINI 2.5 FLASH FOR SPEED
  */
 export const analyzePrescriptionImage = async (base64Image: string, mimeType: string = 'image/png'): Promise<Partial<Medication>[]> => {
   const ai = getAi();
-  const modelId = 'gemini-3-pro-preview'; 
-  console.log("AI Image started")
+  // Use Flash for high-speed vision tasks
+  const modelId = 'gemini-2.5-flash'; 
+  console.log("AI ImageScan started with", modelId);
+  
   const prompt = `
-    You are an certified clinical pharmacist. 
-    Analyze this prescription image. 
-    Extract the following details for EACH medication found.
-    
-    Output Format (JSON Array only):
-    [
-      {
-        "name": "Medication Name",
-        "dosage": "Strength",
-        "frequency": "Frequency",
-        "duration": "Duration",
-        "instructions": "Instructions",
-        "prescriber": "Doctor Name"
-      }
-    ]
-    Use null for missing fields. Do not include any conversational text.
+    Extract medication details from this image into a JSON Array.
+    Fields: name, dosage, frequency, duration, instructions, prescriber.
+    Return strictly structured JSON. No markdown. No conversation.
+    Example: [{"name": "Amoxicillin", "dosage": "500mg", "frequency": "Twice Daily", "duration": "7 days", "instructions": "Take with food", "prescriber": "Dr. Smith"}]
+    Use null for missing fields.
   `;
 
   try {
@@ -104,7 +96,7 @@ export const analyzePrescriptionImage = async (base64Image: string, mimeType: st
 
     const text = response.text;
     if (!text) throw new Error("No response from AI model");
-    console.log("AI Image completed")
+    console.log("AI ImageScan completed");
     return extractJson(text, 'array');
   } catch (error: any) {
     console.error("OCR Failed:", error);
@@ -117,6 +109,7 @@ export const analyzePrescriptionImage = async (base64Image: string, mimeType: st
 
 /**
  * Workflow 2: Drug Interaction Checking
+ * KEEPS PRO MODEL FOR DEEP REASONING
  */
 export const analyzeInteractions = async (meds: Medication[]): Promise<AnalysisResult> => {
   const ai = getAi();
@@ -150,7 +143,7 @@ export const analyzeInteractions = async (meds: Medication[]): Promise<AnalysisR
   try {
     const response = await ai.models.generateContent({
       model: modelId,
-      contents: { parts: [{ text: prompt }] }, // Explicit content structure
+      contents: { parts: [{ text: prompt }] },
       config: {
         temperature: 0.3,
         responseMimeType: "application/json",
@@ -165,7 +158,6 @@ export const analyzeInteractions = async (meds: Medication[]): Promise<AnalysisR
     
     // Validate structure
     if (!result.interactions || !Array.isArray(result.interactions)) {
-       // If AI returned an array of interactions directly by mistake, wrap it
        if (Array.isArray(result)) {
          return {
            interactions: result,

@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, Loader2, XCircle, Aperture, X, Crop, Check } from 'lucide-react';
+import { Camera, Upload, XCircle, Aperture, X, Crop, Check } from 'lucide-react';
 import { analyzePrescriptionImage, validateApiKey } from '../services/gemini';
 import { Medication } from '../types';
 
@@ -20,6 +21,8 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [timer, setTimer] = useState(0);
+  const [progress, setProgress] = useState(0);
   
   // Cropping State
   const [tempImage, setTempImage] = useState<string | null>(null);
@@ -38,6 +41,29 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
       stopCamera();
     };
   }, []);
+
+  // Timer & Progress Effect
+  useEffect(() => {
+    let interval: any;
+    if (isAnalyzing) {
+      setTimer(0);
+      setProgress(0);
+      
+      const startTime = Date.now();
+      
+      interval = setInterval(() => {
+        const elapsed = (Date.now() - startTime) / 1000;
+        setTimer(elapsed);
+        
+        // Asymptotic progress: Fast at first, slows down, never hits 100% until done
+        // 1 - e^(-0.5 * t) approaches 1. 
+        // We multiply by 95 to cap at 95%.
+        const computedProgress = (1 - Math.exp(-0.3 * elapsed)) * 95;
+        setProgress(computedProgress);
+      }, 100);
+    }
+    return () => clearInterval(interval);
+  }, [isAnalyzing]);
 
   const startCamera = async () => {
     setError(null);
@@ -222,13 +248,22 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
     setIsAnalyzing(true);
     setError(null);
 
+    // 30s Timeout Protection
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("Request timed out. Please try a clearer image.")), 30000)
+    );
+
     try {
       // Extract clean base64 and mime type
       const mimeTypeMatch = base64Data.match(/data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+).*,.*/);
       const mimeType = mimeTypeMatch ? mimeTypeMatch[1] : 'image/jpeg';
       const cleanBase64 = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
       
-      const extractedMeds = await analyzePrescriptionImage(cleanBase64, mimeType);
+      // Race between API and Timeout
+      const extractedMeds = await Promise.race([
+        analyzePrescriptionImage(cleanBase64, mimeType),
+        timeoutPromise
+      ]) as Partial<Medication>[];
       
       if (!extractedMeds || extractedMeds.length === 0) {
         throw new Error("No medications found. Please try a clearer image.");
@@ -246,7 +281,10 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
         dateAdded: Date.now()
       }));
 
-      onMedicationsFound(newMeds);
+      // Finish Progress
+      setProgress(100);
+      setTimeout(() => onMedicationsFound(newMeds), 500); // Slight delay to show 100%
+      
     } catch (err: any) {
       console.error("Processing error:", err);
       let message = "Analysis failed. Please try a clearer image.";
@@ -267,10 +305,22 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
       <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-lg bg-slate-50 relative overflow-hidden transition-colors min-h-[300px]">
         
         {isAnalyzing ? (
-          <div className="text-center p-8">
-            <Loader2 className="w-10 h-10 text-teal-600 animate-spin mx-auto mb-3" />
-            <p className="text-slate-600 font-medium">Analyzing with Gemini Vision...</p>
-            <p className="text-xs text-slate-400 mt-1">Extracting Rx details & signatures</p>
+          <div className="text-center p-8 w-full flex flex-col items-center justify-center h-[300px]">
+            {/* Timer */}
+            <div className="text-5xl font-bold text-red-600 mb-6 font-mono tracking-tight">
+              {timer.toFixed(1)}s
+            </div>
+            
+            {/* Progress Bar */}
+            <div className="w-48 h-2 bg-slate-200 rounded-full overflow-hidden mb-4 relative">
+               <div 
+                 className="h-full bg-orange-500 rounded-full transition-all duration-300 ease-out"
+                 style={{ width: `${progress}%` }} 
+               />
+            </div>
+            
+            <p className="text-slate-600 font-medium">Extracting Text...</p>
+            <p className="text-xs text-slate-400 mt-1">Using Gemini 2.5 Flash</p>
           </div>
         ) : isCameraOpen ? (
           <div className="relative w-full h-full flex flex-col items-center bg-black">
