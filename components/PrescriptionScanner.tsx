@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, XCircle, Aperture, X, Crop, Check, RotateCw, Plus, Trash2, ArrowRight, Wand2, Sun, FileText, ScanLine, Search, Globe, Loader2 } from 'lucide-react';
+import { Camera, Upload, XCircle, Aperture, X, Crop, Check, RotateCw, Plus, Trash2, ArrowRight, Sun, FileText, ScanLine, Globe } from 'lucide-react';
 import { analyzePrescriptionImage, verifyMedicationSpelling, validateApiKey } from '../services/gemini';
 import { Medication } from '../types';
 
@@ -456,6 +456,7 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
                                     <Trash2 className="w-4 h-4" />
                                 </button>
                              </div>
+
                              <div className="flex gap-2">
                                 <input 
                                     className="flex-1 p-2 border border-slate-300 rounded text-xs text-slate-600"

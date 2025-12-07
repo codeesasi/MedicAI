@@ -190,26 +190,27 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
 /**
  * Workflow 2: Drug Interaction Checking + Indication Validation
  */
-export const analyzeInteractions = async (meds: Medication[]): Promise<AnalysisResult> => {
+export const analyzeInteractions = async (meds: Medication[], patientConditions: string): Promise<AnalysisResult> => {
   const ai = getAi();
   const modelId = 'gemini-3-pro-preview';
   
-  // Create a context-rich list including reasons
+  // Create a context-rich list
   const medListJson = JSON.stringify(meds.map(m => ({
     name: m.name,
     dosage: m.dosage,
-    reason: m.reason || 'Not specified'
+    frequency: m.frequency
   })));
 
   const prompt = `
     Act as a senior clinical safety architect. 
-    Analyze this medication list: ${medListJson}
+    
+    Patient Context/Conditions: "${patientConditions}"
+    Medication List: ${medListJson}
     
     TASKS:
-    1. Indication Check: For each medication, verify if it is appropriate for the stated "reason". 
-       - If the reason is missing or "Not specified", mark status as "unknown".
-       - If the medication is NOT typically used for that reason, mark as "warning".
-       - If appropriate, mark as "appropriate".
+    1. Indication Check: Verify if each medication is appropriate for the stated "Patient Context". 
+       - If a medication treats a condition NOT listed in the Patient Context, mark status as "warning" or "unknown" and explain.
+       - If appropriate for the context, mark as "appropriate".
     
     2. Interaction Check: Identify drug-drug interactions, contraindications, and lifestyle warnings.
     
@@ -228,9 +229,9 @@ export const analyzeInteractions = async (meds: Medication[]): Promise<AnalysisR
       "indicationChecks": [
         {
           "medicationName": "Name",
-          "reason": "Reason",
+          "reason": "Inferred reason from drug class",
           "status": "appropriate" | "warning" | "unknown",
-          "note": "Brief clinical explanation of the match or mismatch."
+          "note": "Brief clinical explanation of whether this drug matches the patient's stated conditions."
         }
       ],
       "lifestyleWarnings": ["Warning 1", "Warning 2", "Warning 3"],

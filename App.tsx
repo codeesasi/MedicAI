@@ -69,7 +69,7 @@ export default function App() {
     setAnalysisResult(null);
   };
 
-  const runAnalysis = async () => {
+  const runAnalysis = async (patientConditions: string) => {
     if (medications.length === 0) return;
     setAppError(null);
     
@@ -81,7 +81,7 @@ export default function App() {
     setIsAnalyzing(true);
     setAnalysisResult(null);
     try {
-      const result = await analyzeInteractions(medications);
+      const result = await analyzeInteractions(medications, patientConditions);
       setAnalysisResult(result);
     } catch (e: any) {
       console.error(e);
@@ -211,7 +211,7 @@ export default function App() {
             {activeTab === Tab.CABINET && (
               <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 h-auto xl:h-full items-stretch animate-in fade-in slide-in-from-right-4 duration-300">
                 {/* Left Column: Medication List */}
-                <div className="flex flex-col xl:col-span-1 h-[500px] xl:h-full min-h-0">
+                <div className="flex flex-col xl:col-span-1 h-[600px] xl:h-full min-h-0">
                   <MedicationList 
                     medications={medications} 
                     onAdd={handleAddMedication}
