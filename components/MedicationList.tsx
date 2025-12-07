@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle } from 'lucide-react';
+import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse } from 'lucide-react';
 import { Medication } from '../types';
 
 interface Props {
@@ -14,12 +14,44 @@ interface Props {
 export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, onUpdate, onClear, onAnalyzeInteractions }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({ name: '', dosage: '', frequency: '' });
+  const [formError, setFormError] = useState<string | null>(null);
+  
+  // Expanded Form State
+  const [formData, setFormData] = useState({ 
+    name: '', 
+    dosage: '', 
+    frequency: '',
+    duration: '',
+    prescriber: '',
+    instructions: '',
+    reason: '' 
+  });
+  
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name) return;
+    setFormError(null);
+
+    // Validation
+    if (!formData.name.trim()) {
+        setFormError("Medication name is required.");
+        return;
+    }
+    if (!formData.reason.trim()) {
+        setFormError("Reason for taking (Condition) is required.");
+        return;
+    }
+
+    const medData = {
+        name: formData.name,
+        dosage: formData.dosage,
+        frequency: formData.frequency,
+        duration: formData.duration,
+        prescriber: formData.prescriber,
+        instructions: formData.instructions,
+        reason: formData.reason
+    };
 
     if (editingId) {
       // Update existing
@@ -27,18 +59,14 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
       if (existing) {
         onUpdate({
           ...existing,
-          name: formData.name,
-          dosage: formData.dosage,
-          frequency: formData.frequency
+          ...medData
         });
       }
     } else {
       // Add new
       onAdd({
         id: Math.random().toString(36).substr(2, 9),
-        name: formData.name,
-        dosage: formData.dosage,
-        frequency: formData.frequency,
+        ...medData,
         source: 'manual',
         dateAdded: Date.now()
       });
@@ -51,15 +79,21 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
     setFormData({
       name: med.name,
       dosage: med.dosage,
-      frequency: med.frequency
+      frequency: med.frequency,
+      duration: med.duration || '',
+      prescriber: med.prescriber || '',
+      instructions: med.instructions || '',
+      reason: med.reason || ''
     });
     setEditingId(med.id);
+    setFormError(null);
     setIsFormOpen(true);
   };
 
   const resetForm = () => {
-    setFormData({ name: '', dosage: '', frequency: '' });
+    setFormData({ name: '', dosage: '', frequency: '', duration: '', prescriber: '', instructions: '', reason: '' });
     setEditingId(null);
+    setFormError(null);
     setIsFormOpen(false);
   };
 
@@ -86,6 +120,10 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
       const transcript = event.results[0][0].transcript;
       setFormData(prev => ({ ...prev, name: transcript }));
     };
+  };
+
+  const formatDate = (timestamp: number) => {
+    return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   return (
@@ -120,32 +158,86 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
         )}
 
         {medications.map(med => (
-          <div key={med.id} className="group flex justify-between items-start p-4 rounded-lg bg-slate-50 border border-slate-200 hover:border-teal-300 transition-all">
-            <div>
-              <h3 className="font-bold text-slate-800">{med.name}</h3>
-              <div className="text-sm text-slate-500 mt-1 flex flex-wrap gap-2">
-                <span className="bg-white px-2 py-0.5 rounded border border-slate-200">{med.dosage}</span>
-                <span className="bg-white px-2 py-0.5 rounded border border-slate-200">{med.frequency}</span>
-              </div>
-              {med.instructions && (
-                <p className="text-xs text-slate-400 mt-2 italic">"{med.instructions}"</p>
-              )}
+          <div key={med.id} className="group flex flex-col p-4 rounded-lg bg-slate-50 border border-slate-200 hover:border-teal-300 transition-all gap-3">
+            <div className="flex justify-between items-start">
+                <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-slate-800 text-lg">{med.name}</h3>
+                    {med.source === 'ocr' ? (
+                        <div className="p-1 bg-blue-100 text-blue-600 rounded" title="Scanned from Prescription">
+                            <Smartphone className="w-3 h-3" />
+                        </div>
+                    ) : (
+                        <div className="p-1 bg-slate-200 text-slate-500 rounded" title="Manually Added">
+                            <Keyboard className="w-3 h-3" />
+                        </div>
+                    )}
+                </div>
+                
+                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button 
+                        onClick={() => handleEdit(med)}
+                        className="text-slate-400 hover:text-teal-600 p-1.5 hover:bg-teal-50 rounded transition-colors"
+                        title="Edit medication"
+                    >
+                        <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                        onClick={() => onRemove(med.id)}
+                        className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded transition-colors"
+                        title="Remove medication"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                </div>
             </div>
-            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button 
-                onClick={() => handleEdit(med)}
-                className="text-slate-400 hover:text-teal-600 p-1.5 hover:bg-teal-50 rounded transition-colors"
-                title="Edit medication"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button 
-                onClick={() => onRemove(med.id)}
-                className="text-slate-400 hover:text-red-500 p-1.5 hover:bg-red-50 rounded transition-colors"
-                title="Remove medication"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+
+            {/* Reason Badge */}
+            {med.reason && (
+                <div className="flex items-center gap-1.5 text-sm text-indigo-700 font-medium bg-indigo-50 px-2 py-1 rounded w-fit">
+                    <HeartPulse className="w-3.5 h-3.5" />
+                    <span>For: {med.reason}</span>
+                </div>
+            )}
+
+            {/* Key Info Grid */}
+            <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="bg-white px-2 py-1.5 rounded border border-slate-200 flex items-center gap-2 text-slate-700">
+                    <Pill className="w-3.5 h-3.5 text-teal-500" />
+                    <span className="truncate">{med.dosage || 'No dosage'}</span>
+                </div>
+                <div className="bg-white px-2 py-1.5 rounded border border-slate-200 flex items-center gap-2 text-slate-700">
+                    <Clock className="w-3.5 h-3.5 text-teal-500" />
+                    <span className="truncate">{med.frequency || 'No frequency'}</span>
+                </div>
+            </div>
+
+            {/* Expanded Details */}
+            {(med.prescriber || med.duration) && (
+                <div className="flex flex-wrap gap-3 text-xs text-slate-500 border-t border-slate-200 pt-2">
+                    {med.prescriber && (
+                        <div className="flex items-center gap-1.5">
+                            <Stethoscope className="w-3.5 h-3.5 text-slate-400" />
+                            <span>Dr. {med.prescriber.replace(/^Dr\.\s*/i, '')}</span>
+                        </div>
+                    )}
+                    {med.duration && (
+                        <div className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{med.duration}</span>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {med.instructions && (
+                <div className="text-xs text-slate-600 bg-teal-50/50 p-2 rounded flex gap-2 items-start">
+                    <FileText className="w-3.5 h-3.5 text-teal-500 mt-0.5 flex-shrink-0" />
+                    <p className="italic leading-relaxed">"{med.instructions}"</p>
+                </div>
+            )}
+            
+            <div className="text-[10px] text-slate-300 text-right">
+                Added {formatDate(med.dateAdded)}
             </div>
           </div>
         ))}
@@ -161,40 +253,90 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
                </button>
             </div>
             
+            {/* Name Input */}
             <div className="flex gap-2">
               <input
                 autoFocus
                 type="text"
                 placeholder="Medication Name (e.g. Lisinopril)"
-                className="flex-1 p-2 rounded border border-teal-600 bg-teal-700 text-white placeholder-teal-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="flex-1 p-2 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white text-slate-900"
                 value={formData.name}
                 onChange={e => setFormData({ ...formData, name: e.target.value })}
               />
               <button 
                 type="button" 
                 onClick={startListening}
-                className="p-2 bg-white text-teal-600 rounded border border-teal-200 hover:bg-teal-100"
+                className="p-2 bg-white text-teal-600 rounded border border-slate-300 hover:bg-slate-50"
                 title="Speak medication name"
               >
                 <Mic className="w-4 h-4" />
               </button>
             </div>
-            <div className="flex gap-2">
+
+            {/* Reason Input - Required */}
+            <div>
+              <input
+                  type="text"
+                  placeholder="Reason for taking (e.g. Fever, Hypertension) *"
+                  className={`w-full p-2 rounded border focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white text-slate-900
+                    ${formError && !formData.reason ? 'border-red-400 ring-1 ring-red-400' : 'border-slate-300'}`}
+                  value={formData.reason}
+                  onChange={e => setFormData({ ...formData, reason: e.target.value })}
+              />
+              {formError && !formData.reason && (
+                  <p className="text-xs text-red-500 mt-1 font-medium">Condition/Reason is required</p>
+              )}
+            </div>
+            
+            <div className="grid grid-cols-2 gap-2">
               <input
                 type="text"
                 placeholder="Dosage (e.g. 10mg)"
-                className="flex-1 p-2 rounded border border-teal-600 bg-teal-700 text-white placeholder-teal-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="p-2 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white text-slate-900"
                 value={formData.dosage}
                 onChange={e => setFormData({ ...formData, dosage: e.target.value })}
               />
               <input
                 type="text"
                 placeholder="Frequency (e.g. Daily)"
-                className="flex-1 p-2 rounded border border-teal-600 bg-teal-700 text-white placeholder-teal-200 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                className="p-2 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white text-slate-900"
                 value={formData.frequency}
                 onChange={e => setFormData({ ...formData, frequency: e.target.value })}
               />
             </div>
+
+            <div className="grid grid-cols-2 gap-2">
+                <input
+                    type="text"
+                    placeholder="Duration (e.g. 7 days)"
+                    className="p-2 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white text-slate-900"
+                    value={formData.duration}
+                    onChange={e => setFormData({ ...formData, duration: e.target.value })}
+                />
+                <input
+                    type="text"
+                    placeholder="Doctor (e.g. Dr. Smith)"
+                    className="p-2 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white text-slate-900"
+                    value={formData.prescriber}
+                    onChange={e => setFormData({ ...formData, prescriber: e.target.value })}
+                />
+            </div>
+
+            <textarea
+                rows={2}
+                placeholder="Special Instructions (e.g. Take with food)"
+                className="w-full p-2 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm resize-none bg-white text-slate-900"
+                value={formData.instructions}
+                onChange={e => setFormData({ ...formData, instructions: e.target.value })}
+            />
+
+            {formError && (
+                <div className="p-2 bg-red-100 text-red-700 text-xs rounded flex items-center gap-2">
+                    <AlertTriangle className="w-3 h-3" />
+                    {formError}
+                </div>
+            )}
+
             <div className="flex gap-2 justify-end pt-2">
               <button 
                 type="button" 
@@ -225,9 +367,9 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
         </button>
         <button 
           onClick={onAnalyzeInteractions}
-          disabled={medications.length < 2}
+          disabled={medications.length === 0}
           className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg font-medium text-white shadow-md transition-all
-            ${medications.length < 2 
+            ${medications.length === 0 
               ? 'bg-slate-300 cursor-not-allowed' 
               : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'}`}
         >

@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { Medication, AnalysisResult } from '../types';
 
@@ -62,30 +61,40 @@ const extractJson = (text: string, type: 'array' | 'object'): any => {
 
 /**
  * Workflow 1: Prescription Analysis (Vision + OCR)
- * SWITCHED TO GEMINI 2.5 FLASH FOR SPEED
+ * FAST MODE: Uses Gemini 2.5 Flash
  */
-export const analyzePrescriptionImage = async (base64Image: string, mimeType: string = 'image/png'): Promise<Partial<Medication>[]> => {
+export const analyzePrescriptionImage = async (
+  images: { base64: string, mimeType: string }[]
+): Promise<Partial<Medication>[]> => {
   const ai = getAi();
   // Use Flash for high-speed vision tasks
-  const modelId = 'gemini-2.5-flash'; 
-  console.log("AI ImageScan started with", modelId);
+  const modelId = 'gemini-2.5-pro'; 
+  console.log("AI ImageScan started with", modelId, "Image count:", images.length);
   
   const prompt = `
-    Extract medication details from this image into a JSON Array.
+    Extract medication details from these prescription images into a JSON Array.
+    Treat the images as pages of one or more prescriptions.
     Fields: name, dosage, frequency, duration, instructions, prescriber.
     Return strictly structured JSON. No markdown. No conversation.
     Example: [{"name": "Amoxicillin", "dosage": "500mg", "frequency": "Twice Daily", "duration": "7 days", "instructions": "Take with food", "prescriber": "Dr. Smith"}]
     Use null for missing fields.
   `;
 
+  // Prepare parts for multiple images
+  const parts: any[] = images.map(img => ({
+    inlineData: {
+      mimeType: img.mimeType,
+      data: img.base64
+    }
+  }));
+  // Add the prompt as the last part
+  parts.push({ text: prompt });
+
   try {
     const response = await ai.models.generateContent({
       model: modelId,
       contents: {
-        parts: [
-          { inlineData: { mimeType, data: base64Image } },
-          { text: prompt }
-        ]
+        parts: parts
       },
       config: {
         temperature: 0.1,
@@ -108,20 +117,101 @@ export const analyzePrescriptionImage = async (base64Image: string, mimeType: st
 };
 
 /**
- * Workflow 2: Drug Interaction Checking
- * KEEPS PRO MODEL FOR DEEP REASONING
+ * Workflow 1.5: Verify Spelling
+ */
+export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Promise<Partial<Medication>[]> => {
+  console.log("Starting Spelling Verification for:", meds);
+  const ai = getAi();
+
+  const inputJson = JSON.stringify(meds);
+
+  // 1. Primary Attempt: Gemini 3 Pro + Google Search
+  try {
+    console.log("Attempting verification with Gemini 3 Pro (Search Enabled)...");
+    const modelId = 'gemini-2.5-flash';
+    const prompt = `
+      Act as a pharmacy auditor. Verify the spelling of these medication names using Google Search.
+      Input: ${inputJson}
+      
+      Tasks:
+      1. Search for the medication names to verify existence.
+      2. Correct typos (e.g., "Lisnopril" -> "Lisinopril").
+      3. Return ONLY the corrected JSON Array.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        tools: [{ googleSearch: {} }], 
+        temperature: 0.1,
+        safetySettings: SAFETY_SETTINGS,
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("Empty response from Pro model");
+    return extractJson(text, 'array');
+
+  } catch (error) {
+    console.warn("Primary verification failed. Switching to Fallback...", error);
+
+    // 2. Fallback Attempt: Gemini 2.5 Flash
+    try {
+      console.log("Attempting fallback with Gemini 2.5 Flash...");
+      const modelId = 'gemini-2.5-flash';
+      const prompt = `
+        You are a medical data cleaner. Correct spelling errors in this medication list.
+        Input: ${inputJson}
+        Return strictly valid JSON Array.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: modelId,
+        contents: { parts: [{ text: prompt }] },
+        config: {
+          responseMimeType: "application/json",
+          temperature: 0.1,
+          safetySettings: SAFETY_SETTINGS,
+        }
+      });
+
+      const text = response.text;
+      if (!text) return meds;
+      return extractJson(text, 'array');
+
+    } catch (fallbackError) {
+      console.error("All verification attempts failed.", fallbackError);
+      return meds;
+    }
+  }
+};
+
+/**
+ * Workflow 2: Drug Interaction Checking + Indication Validation
  */
 export const analyzeInteractions = async (meds: Medication[]): Promise<AnalysisResult> => {
   const ai = getAi();
   const modelId = 'gemini-3-pro-preview';
   
-  const medList = meds.map(m => `${m.name} ${m.dosage || ''} ${m.frequency || ''}`).join(', ');
+  // Create a context-rich list including reasons
+  const medListJson = JSON.stringify(meds.map(m => ({
+    name: m.name,
+    dosage: m.dosage,
+    reason: m.reason || 'Not specified'
+  })));
 
   const prompt = `
     Act as a senior clinical safety architect. 
-    Cross-reference these medications: ${medList}
+    Analyze this medication list: ${medListJson}
     
-    Identify interactions, contraindications, and lifestyle warnings.
+    TASKS:
+    1. Indication Check: For each medication, verify if it is appropriate for the stated "reason". 
+       - If the reason is missing or "Not specified", mark status as "unknown".
+       - If the medication is NOT typically used for that reason, mark as "warning".
+       - If appropriate, mark as "appropriate".
+    
+    2. Interaction Check: Identify drug-drug interactions, contraindications, and lifestyle warnings.
     
     Return STRICT JSON Object:
     {
@@ -135,8 +225,16 @@ export const analyzeInteractions = async (meds: Medication[]): Promise<AnalysisR
           "mechanism": "Mechanism"
         }
       ],
-      "lifestyleWarnings": ["Warning 1", "Warning 2"],
-      "summary": "Concise summary"
+      "indicationChecks": [
+        {
+          "medicationName": "Name",
+          "reason": "Reason",
+          "status": "appropriate" | "warning" | "unknown",
+          "note": "Brief clinical explanation of the match or mismatch."
+        }
+      ],
+      "lifestyleWarnings": ["Warning 1", "Warning 2", "Warning 3"],
+      "summary": "Concise summary of safety and indication findings."
     }
   `;
 
@@ -158,15 +256,11 @@ export const analyzeInteractions = async (meds: Medication[]): Promise<AnalysisR
     
     // Validate structure
     if (!result.interactions || !Array.isArray(result.interactions)) {
-       if (Array.isArray(result)) {
-         return {
-           interactions: result,
-           lifestyleWarnings: [],
-           summary: "Analysis complete."
-         } as AnalysisResult;
-       }
        throw new Error("Invalid JSON structure returned");
     }
+    
+    // Ensure indicationChecks exists
+    if (!result.indicationChecks) result.indicationChecks = [];
     
     return result as AnalysisResult;
 

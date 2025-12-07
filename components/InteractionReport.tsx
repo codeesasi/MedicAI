@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, ShieldCheck, AlertOctagon, Info, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, AlertOctagon, Info, Utensils, Zap, CheckCircle, HelpCircle } from 'lucide-react';
 import { AnalysisResult, Severity } from '../types';
 
 interface Props {
@@ -18,7 +18,7 @@ export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
         </div>
         <h3 className="text-xl font-bold text-slate-800">Analyzing Safety Profile</h3>
         <p className="text-slate-500 mt-2 text-center max-w-md">
-          Gemini Pro is cross-referencing your medications against clinical databases for interactions and contraindications...
+          Checking drug interactions and verifying if medications match your stated conditions...
         </p>
       </div>
     );
@@ -29,7 +29,7 @@ export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
       <div className="h-full flex flex-col items-center justify-center p-12 bg-slate-50 rounded-xl border border-dashed border-slate-300 min-h-[400px]">
         <ShieldCheck className="w-16 h-16 text-slate-300 mb-4" />
         <h3 className="text-lg font-medium text-slate-500">No Analysis Yet</h3>
-        <p className="text-sm text-slate-400">Add medications and click "Check Safety"</p>
+        <p className="text-sm text-slate-400">Add medications (with reason) and click "Check Safety"</p>
       </div>
     );
   }
@@ -62,8 +62,43 @@ export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
         <p className="text-slate-400 text-sm mt-1">{result.summary}</p>
       </div>
 
-      <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-        {/* Interaction Cards */}
+      <div className="p-6 space-y-8 flex-1 overflow-y-auto">
+        
+        {/* Indication / Appropriateness Check */}
+        {result.indicationChecks && result.indicationChecks.length > 0 && (
+          <div>
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <CheckCircle className="w-4 h-4" /> Indication Verification
+            </h3>
+            <div className="grid grid-cols-1 gap-3">
+              {result.indicationChecks.map((check, idx) => (
+                <div key={idx} className={`p-3 rounded-lg border flex items-start gap-3 
+                  ${check.status === 'appropriate' ? 'bg-green-50 border-green-200' : 
+                    check.status === 'warning' ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                    
+                    <div className="mt-0.5 flex-shrink-0">
+                      {check.status === 'appropriate' ? <CheckCircle className="w-5 h-5 text-green-600" /> :
+                       check.status === 'warning' ? <AlertTriangle className="w-5 h-5 text-amber-600" /> :
+                       <HelpCircle className="w-5 h-5 text-slate-400" />}
+                    </div>
+                    
+                    <div>
+                      <div className="font-bold text-sm text-slate-800">
+                        {check.medicationName} 
+                        <span className="font-normal text-slate-500"> for </span> 
+                        <span className="italic">{check.reason}</span>
+                      </div>
+                      <p className={`text-sm mt-1 ${check.status === 'warning' ? 'text-amber-800 font-medium' : 'text-slate-600'}`}>
+                        {check.note}
+                      </p>
+                    </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Drug Interactions */}
         <div>
           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Drug Interactions</h3>
           <div className="space-y-3">

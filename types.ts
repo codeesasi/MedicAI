@@ -6,6 +6,7 @@ export interface Medication {
   duration?: string;
   instructions?: string;
   prescriber?: string;
+  reason?: string; // New field for Condition/Reason
   source: 'manual' | 'ocr';
   dateAdded: number;
 }
@@ -26,8 +27,16 @@ export interface Interaction {
   mechanism: string; // e.g., "CYP3A4 inhibition"
 }
 
+export interface IndicationCheck {
+  medicationName: string;
+  reason: string;
+  status: 'appropriate' | 'warning' | 'unknown';
+  note: string;
+}
+
 export interface AnalysisResult {
   interactions: Interaction[];
+  indicationChecks: IndicationCheck[]; // New field for Reason/Indication validation
   lifestyleWarnings: string[]; // Alcohol, Food, Sun
   summary: string;
 }
