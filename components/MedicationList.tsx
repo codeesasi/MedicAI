@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse } from 'lucide-react';
+import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse, MapPin, Loader2 } from 'lucide-react';
 import { Medication } from '../types';
 
 interface Props {
@@ -8,7 +8,7 @@ interface Props {
   onAdd: (med: Medication) => void;
   onUpdate: (med: Medication) => void;
   onClear: () => void;
-  onAnalyzeInteractions: (conditions: string) => void;
+  onAnalyzeInteractions: (conditions: string, location: string) => void;
 }
 
 export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, onUpdate, onClear, onAnalyzeInteractions }) => {
@@ -16,8 +16,10 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   
-  // Patient Condition State
+  // Patient Condition & Location State
   const [patientConditions, setPatientConditions] = useState('');
+  const [location, setLocation] = useState('');
+  const [isLocating, setIsLocating] = useState(false);
   
   // Expanded Form State
   const [formData, setFormData] = useState({ 
@@ -116,6 +118,44 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
       const transcript = event.results[0][0].transcript;
       setFormData(prev => ({ ...prev, name: transcript }));
     };
+  };
+
+  const handleAutoLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const { latitude, longitude } = position.coords;
+        // Try a simple public IP/Geo API for City context, or fallback to coords
+        try {
+           const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`);
+           const data = await res.json();
+           const city = data.city || data.locality || '';
+           const country = data.countryName || '';
+           const region = data.principalSubdivision || '';
+           
+           if (city && country) {
+              setLocation(`${city}, ${region}, ${country}`);
+           } else {
+              setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+           }
+        } catch (e) {
+           // Fallback if API fails
+           setLocation(`${latitude.toFixed(4)}, ${longitude.toFixed(4)}`);
+        } finally {
+           setIsLocating(false);
+        }
+      },
+      (error) => {
+        console.error("Error getting location", error);
+        setIsLocating(false);
+        alert("Unable to retrieve location. Please enter manually.");
+      }
+    );
   };
 
   const formatDate = (timestamp: number) => {
@@ -330,18 +370,47 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
         ))}
       </div>
 
-      {/* Global Condition / Reason Input */}
-      <div className="p-4 bg-slate-50 border-t border-slate-100 flex-none">
-          <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
-              <HeartPulse className="w-4 h-4 text-indigo-500" />
-              Patient Conditions / Reason for Check
-          </label>
-          <textarea
-              value={patientConditions}
-              onChange={(e) => setPatientConditions(e.target.value)}
-              placeholder="e.g. I have hypertension and occasional back pain. I'm taking these for..."
-              className="w-full p-3 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[80px] resize-none mb-3"
-          />
+      {/* Global Condition & Location Inputs */}
+      <div className="p-4 bg-slate-50 border-t border-slate-100 flex-none space-y-4">
+          
+          {/* Location Input */}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-rose-500" />
+                Your Location <span className="text-[10px] font-normal text-slate-400 lowercase">(for diet & lifestyle context)</span>
+            </label>
+            <div className="flex gap-2">
+                <input
+                    type="text"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    placeholder="Enter City, Country (e.g. Bangalore, India)"
+                    className="flex-1 p-2 rounded border border-slate-300 text-sm focus:ring-2 focus:ring-rose-500 bg-white text-slate-900"
+                />
+                <button
+                    onClick={handleAutoLocation}
+                    disabled={isLocating}
+                    className="p-2 bg-white border border-slate-300 rounded text-slate-600 hover:bg-slate-50 hover:text-rose-500 disabled:opacity-50"
+                    title="Auto-detect location"
+                >
+                    {isLocating ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
+                </button>
+            </div>
+          </div>
+
+          {/* Condition Input */}
+          <div>
+            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
+                <HeartPulse className="w-4 h-4 text-indigo-500" />
+                Patient Conditions / Reason for Checkup
+            </label>
+            <textarea
+                value={patientConditions}
+                onChange={(e) => setPatientConditions(e.target.value)}
+                placeholder="e.g. I have hypertension and occasional back pain. I'm taking these for..."
+                className="w-full p-3 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[80px] resize-none bg-white text-slate-900"
+            />
+          </div>
           
           <div className="flex gap-3">
             <button 
@@ -352,7 +421,7 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
               Add Manual
             </button>
             <button 
-              onClick={() => onAnalyzeInteractions(patientConditions)}
+              onClick={() => onAnalyzeInteractions(patientConditions, location)}
               disabled={medications.length === 0 || !patientConditions.trim()}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-bold text-white shadow-md transition-all
                 ${medications.length === 0 || !patientConditions.trim() 

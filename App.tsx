@@ -69,7 +69,7 @@ export default function App() {
     setAnalysisResult(null);
   };
 
-  const runAnalysis = async (patientConditions: string) => {
+  const runAnalysis = async (patientConditions: string, location: string) => {
     if (medications.length === 0) return;
     setAppError(null);
     
@@ -81,7 +81,7 @@ export default function App() {
     setIsAnalyzing(true);
     setAnalysisResult(null);
     try {
-      const result = await analyzeInteractions(medications, patientConditions);
+      const result = await analyzeInteractions(medications, patientConditions, location);
       setAnalysisResult(result);
     } catch (e: any) {
       console.error(e);

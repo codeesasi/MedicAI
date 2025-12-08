@@ -30,14 +30,34 @@ export interface Interaction {
 export interface IndicationCheck {
   medicationName: string;
   reason: string;
-  status: 'appropriate' | 'warning' | 'unknown';
+  status: 'appropriate' | 'warning' | 'critical' | 'unknown';
   note: string;
+}
+
+export interface DietPlan {
+  breakfast: string;
+  lunch: string;
+  dinner: string;
+  snacks: string;
+  recommendedFoods: string[]; // Millets, spinach, fruits, etc.
+  avoidFoods: string[];
+  hydration: string;
+  nonVegRecommendation: string;
+}
+
+export interface LifestylePlan {
+  yoga: string;
+  exercises: string[];
+  sleepDuration: string;
+  caloricGuidance: string; // Intake/Burn
 }
 
 export interface AnalysisResult {
   interactions: Interaction[];
-  indicationChecks: IndicationCheck[]; // New field for Reason/Indication validation
-  lifestyleWarnings: string[]; // Alcohol, Food, Sun
+  indicationChecks: IndicationCheck[];
+  lifestyleWarnings: string[]; // General interactions (alcohol, sun)
+  dietPlan: DietPlan; // New Location-based diet
+  lifestylePlan: LifestylePlan; // New Location-based lifestyle
   summary: string;
 }
 

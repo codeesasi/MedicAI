@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, XCircle, Aperture, X, Crop, Check, RotateCw, Plus, Trash2, ArrowRight, Sun, FileText, ScanLine, Globe } from 'lucide-react';
+import { Camera, Upload, XCircle, Aperture, X, Crop, Check, RotateCw, Plus, Trash2, ArrowRight, Globe, Sliders, Move, ZoomIn, ZoomOut } from 'lucide-react';
 import { analyzePrescriptionImage, verifyMedicationSpelling, validateApiKey } from '../services/gemini';
 import { Medication } from '../types';
 
@@ -22,7 +22,16 @@ interface ScannedImage {
   mimeType: string;
 }
 
-type FilterMode = 'original' | 'clear' | 'bold';
+type InteractionMode = 'create' | 'move' | 'resize';
+type ResizeHandle = 'nw' | 'ne' | 'sw' | 'se' | 'n' | 's' | 'e' | 'w';
+
+interface InteractionState {
+  mode: InteractionMode;
+  handle?: ResizeHandle;
+  startX: number;
+  startY: number;
+  startCrop: CropRegion | null;
+}
 
 export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -41,9 +50,18 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
   // Editor State
   const [editingImage, setEditingImage] = useState<string | null>(null); // Base64 of image being edited
   const [cropRegion, setCropRegion] = useState<CropRegion | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [startPos, setStartPos] = useState({ x: 0, y: 0 });
-  const [filterMode, setFilterMode] = useState<FilterMode>('clear'); // Default to Clear
+  
+  // Interaction State for Cropping
+  const [interaction, setInteraction] = useState<InteractionState | null>(null);
+  
+  // Image Enhancement State
+  const [brightness, setBrightness] = useState(100);
+  const [contrast, setContrast] = useState(100);
+  const [grayscale, setGrayscale] = useState(true);
+
+  // Camera Zoom State
+  const [zoom, setZoom] = useState(1);
+  const [zoomCaps, setZoomCaps] = useState<{min: number, max: number, step: number} | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -89,7 +107,12 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
     console.log("Triggering verification for", reviewData);
     try {
         const verified = await verifyMedicationSpelling(reviewData);
-        setReviewData(verified);
+        // Ensure IDs are preserved or added after verification
+        const verifiedWithIds = verified.map((m, i) => ({
+            ...m,
+            id: reviewData[i]?.id || generateId()
+        }));
+        setReviewData(verifiedWithIds);
     } catch (e) {
         console.error("Verification failed, keeping original", e);
     } finally {
@@ -104,9 +127,41 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
       return;
     }
     try {
+      // Request high resolution for better OCR
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
+        video: { 
+          facingMode: 'environment',
+          width: { ideal: 2560 }, 
+          height: { ideal: 1440 }
+        } 
       });
+      
+      // Check for Zoom Capabilities
+      const track = stream.getVideoTracks()[0];
+      const capabilities = (track.getCapabilities && track.getCapabilities()) as any || {};
+      
+      if (capabilities.zoom) {
+         const { min, max, step } = capabilities.zoom;
+         setZoomCaps({ min, max, step });
+         
+         // Auto Zoom Logic: Default to 2x or 50% of max, whichever is smaller
+         // This helps capture text on small bottles without getting too close (focus issues)
+         let idealZoom = 2;
+         if (idealZoom > max) idealZoom = max;
+         if (idealZoom < min) idealZoom = min;
+         
+         try {
+           await track.applyConstraints({ advanced: [{ zoom: idealZoom }] } as any);
+           setZoom(idealZoom);
+         } catch (e) {
+           console.log("Auto-zoom not supported by device driver", e);
+           setZoom(min);
+         }
+      } else {
+         setZoomCaps(null);
+         setZoom(1);
+      }
+
       setIsCameraOpen(true);
       // Wait for render
       setTimeout(() => {
@@ -127,6 +182,21 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
       videoRef.current.srcObject = null;
     }
     setIsCameraOpen(false);
+  };
+
+  const handleZoomChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newZoom = parseFloat(e.target.value);
+    setZoom(newZoom);
+    
+    if (videoRef.current && videoRef.current.srcObject) {
+       const stream = videoRef.current.srcObject as MediaStream;
+       const track = stream.getVideoTracks()[0];
+       try {
+          await track.applyConstraints({ advanced: [{ zoom: newZoom }] } as any);
+       } catch (err) {
+          console.error("Zoom failed", err);
+       }
+    }
   };
 
   const handleCapture = () => {
@@ -176,42 +246,14 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
 
   const startEditing = (base64: string) => {
     setEditingImage(base64);
-    setCropRegion(null);
-    setFilterMode('clear'); // Reset to default "Clear" mode
+    // Initialize crop region to 80% of center after image loads
+    // For now null, user can draw
+    setCropRegion(null); 
+    setBrightness(80);
+    setContrast(125);
+    setGrayscale(true);
   };
 
-  // --- Filter Logic ---
-  const cycleFilter = () => {
-    if (filterMode === 'original') setFilterMode('clear');
-    else if (filterMode === 'clear') setFilterMode('bold');
-    else setFilterMode('original');
-  };
-
-  const getFilterClass = () => {
-    switch (filterMode) {
-      case 'clear': return 'grayscale contrast-[1.25] brightness-110';
-      case 'bold': return 'grayscale contrast-[1.75] brightness-105';
-      default: return '';
-    }
-  };
-
-  const getFilterLabel = () => {
-    switch (filterMode) {
-      case 'clear': return 'Clear Text';
-      case 'bold': return 'Bold Ink';
-      default: return 'Original';
-    }
-  };
-
-  const getFilterIcon = () => {
-    switch (filterMode) {
-      case 'clear': return <FileText className="w-4 h-4" />;
-      case 'bold': return <ScanLine className="w-4 h-4" />;
-      default: return <Sun className="w-4 h-4" />;
-    }
-  };
-
-  // --- Editing Logic (Rotate) ---
   const handleRotate = () => {
     if (!editingImage) return;
 
@@ -219,7 +261,6 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
     img.src = editingImage;
     img.onload = () => {
       const canvas = document.createElement('canvas');
-      // Swap dimensions for 90 degree rotate
       canvas.width = img.height;
       canvas.height = img.width;
       const ctx = canvas.getContext('2d');
@@ -230,12 +271,13 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
         
         const rotatedBase64 = canvas.toDataURL('image/jpeg');
         setEditingImage(rotatedBase64);
-        setCropRegion(null); // Reset crop on rotate
+        setCropRegion(null); 
       }
     };
   };
 
-  // --- Cropping Interaction ---
+  // --- PRO CROPPING LOGIC ---
+
   const getClientCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
     if ('touches' in e) {
       return { x: e.touches[0].clientX, y: e.touches[0].clientY };
@@ -243,51 +285,154 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
     return { x: (e as React.MouseEvent).clientX, y: (e as React.MouseEvent).clientY };
   };
 
+  const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
+
   const handleMouseDown = (e: React.MouseEvent | React.TouchEvent) => {
     if (!containerRef.current) return;
-    if ('touches' in e) e.preventDefault(); 
+    
+    // Check if we clicked a handle
+    const target = e.target as HTMLElement;
+    const handle = target.getAttribute('data-handle') as ResizeHandle | null;
     
     const rect = containerRef.current.getBoundingClientRect();
     const client = getClientCoordinates(e);
-    
     const x = client.x - rect.left;
     const y = client.y - rect.top;
 
-    setIsDragging(true);
-    setStartPos({ x, y });
+    if (handle && cropRegion) {
+      // RESIZE MODE
+      e.stopPropagation();
+      if ('touches' in e) e.preventDefault();
+      setInteraction({
+        mode: 'resize',
+        handle,
+        startX: x,
+        startY: y,
+        startCrop: { ...cropRegion }
+      });
+      return;
+    }
+
+    // Check if inside crop rect for MOVE
+    if (cropRegion && 
+        x >= cropRegion.x && x <= cropRegion.x + cropRegion.width &&
+        y >= cropRegion.y && y <= cropRegion.y + cropRegion.height) {
+      // MOVE MODE
+      if ('touches' in e) e.preventDefault();
+      setInteraction({
+        mode: 'move',
+        startX: x,
+        startY: y,
+        startCrop: { ...cropRegion }
+      });
+      return;
+    }
+
+    // CREATE MODE
+    if ('touches' in e) e.preventDefault();
+    setInteraction({
+        mode: 'create',
+        startX: x,
+        startY: y,
+        startCrop: null
+    });
     setCropRegion({ x, y, width: 0, height: 0 });
   };
 
   const handleMouseMove = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDragging || !containerRef.current) return;
+    if (!interaction || !containerRef.current) return;
     if ('touches' in e) e.preventDefault();
-    
+
     const rect = containerRef.current.getBoundingClientRect();
     const client = getClientCoordinates(e);
-    const currentX = client.x - rect.left;
-    const currentY = client.y - rect.top;
+    const currentX = clamp(client.x - rect.left, 0, rect.width);
+    const currentY = clamp(client.y - rect.top, 0, rect.height);
+    
+    const deltaX = currentX - interaction.startX;
+    const deltaY = currentY - interaction.startY;
 
-    const width = Math.abs(currentX - startPos.x);
-    const height = Math.abs(currentY - startPos.y);
-    const x = Math.min(currentX, startPos.x);
-    const y = Math.min(currentY, startPos.y);
+    if (interaction.mode === 'move' && interaction.startCrop) {
+        // Calculate new position strictly clamped to bounds
+        const newX = clamp(interaction.startCrop.x + deltaX, 0, rect.width - interaction.startCrop.width);
+        const newY = clamp(interaction.startCrop.y + deltaY, 0, rect.height - interaction.startCrop.height);
+        
+        setCropRegion({
+            ...interaction.startCrop,
+            x: newX,
+            y: newY
+        });
+    } 
+    else if (interaction.mode === 'create') {
+        const x = Math.min(currentX, interaction.startX);
+        const y = Math.min(currentY, interaction.startY);
+        const width = Math.abs(currentX - interaction.startX);
+        const height = Math.abs(currentY - interaction.startY);
+        
+        setCropRegion({ x, y, width, height });
+    }
+    else if (interaction.mode === 'resize' && interaction.startCrop && interaction.handle) {
+        const s = interaction.startCrop;
+        let { x, y, width, height } = s;
 
-    const maxWidth = rect.width - x;
-    const maxHeight = rect.height - y;
+        // Calculate deltas based on handle
+        switch (interaction.handle) {
+            case 'e':
+                width = clamp(s.width + deltaX, 10, rect.width - s.x);
+                break;
+            case 'w':
+                const maxDeltaW = s.x + s.width; // Max we can move left is to 0
+                const safeDeltaW = Math.max(deltaX, -s.x);
+                // If we move left, x decreases, width increases
+                // If we move right, x increases, width decreases
+                // But we must limit width > 10
+                
+                // Simpler: Calculate new left edge
+                const newLeft = clamp(s.x + deltaX, 0, s.x + s.width - 10);
+                width = s.width + (s.x - newLeft);
+                x = newLeft;
+                break;
+            case 's':
+                height = clamp(s.height + deltaY, 10, rect.height - s.y);
+                break;
+            case 'n':
+                const newTop = clamp(s.y + deltaY, 0, s.y + s.height - 10);
+                height = s.height + (s.y - newTop);
+                y = newTop;
+                break;
+            case 'se':
+                width = clamp(s.width + deltaX, 10, rect.width - s.x);
+                height = clamp(s.height + deltaY, 10, rect.height - s.y);
+                break;
+            case 'sw':
+                const newL = clamp(s.x + deltaX, 0, s.x + s.width - 10);
+                width = s.width + (s.x - newL);
+                x = newL;
+                height = clamp(s.height + deltaY, 10, rect.height - s.y);
+                break;
+            case 'ne':
+                width = clamp(s.width + deltaX, 10, rect.width - s.x);
+                const newT = clamp(s.y + deltaY, 0, s.y + s.height - 10);
+                height = s.height + (s.y - newT);
+                y = newT;
+                break;
+            case 'nw':
+                const nL = clamp(s.x + deltaX, 0, s.x + s.width - 10);
+                width = s.width + (s.x - nL);
+                x = nL;
+                const nT = clamp(s.y + deltaY, 0, s.y + s.height - 10);
+                height = s.height + (s.y - nT);
+                y = nT;
+                break;
+        }
 
-    setCropRegion({ 
-      x: Math.max(0, x), 
-      y: Math.max(0, y), 
-      width: Math.min(width, maxWidth), 
-      height: Math.min(height, maxHeight) 
-    });
+        setCropRegion({ x, y, width, height });
+    }
   };
 
   const handleMouseUp = () => {
-    setIsDragging(false);
+    setInteraction(null);
   };
 
-  // --- Finish Editing ---
   const handleDoneEditing = () => {
     if (!editingImage || !imageRef.current) return;
 
@@ -322,13 +467,8 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
     const ctx = canvas.getContext('2d');
 
     if (ctx) {
-      if (filterMode === 'clear') {
-         ctx.filter = 'grayscale(100%) contrast(125%) brightness(110%)';
-      } else if (filterMode === 'bold') {
-         ctx.filter = 'grayscale(100%) contrast(175%) brightness(105%)';
-      } else {
-         ctx.filter = 'none';
-      }
+      const grayVal = grayscale ? 'grayscale(100%)' : 'grayscale(0%)';
+      ctx.filter = `${grayVal} contrast(${contrast}%) brightness(${brightness}%)`;
 
       ctx.drawImage(image, sx, sy, sWidth, sHeight, 0, 0, dWidth, dHeight);
       ctx.filter = 'none';
@@ -368,10 +508,15 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
         throw new Error("No medications found. Please try a clearer image.");
       }
       
-      // Move to Review Stage
-      setReviewData(extractedMeds);
-      setIsVerifying(true); // Trigger auto-verification
-      setScannedImages([]); // Clear images
+      // Inject IDs for React Keys
+      const medsWithIds = extractedMeds.map(m => ({
+          ...m,
+          id: generateId()
+      }));
+
+      setReviewData(medsWithIds);
+      setIsVerifying(true);
+      setScannedImages([]);
       setProgress(100);
 
     } catch (err: any) {
@@ -385,9 +530,8 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
   };
 
   const handleConfirmReview = () => {
-    // Finalize meds
     const newMeds: Medication[] = reviewData.map(m => ({
-        id: generateId(),
+        id: generateId(), // New ID for final storage
         name: m.name || 'Unknown',
         dosage: m.dosage || 'As prescribed',
         frequency: m.frequency || 'As directed',
@@ -399,7 +543,7 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
     }));
     
     onMedicationsFound(newMeds);
-    setReviewData([]); // Reset
+    setReviewData([]);
   };
 
   const handleDeleteReviewItem = (index: number) => {
@@ -414,9 +558,14 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
     setReviewData(newData);
   };
 
+  const getEditorImageStyle = () => {
+    return {
+        filter: `brightness(${brightness}%) contrast(${contrast}%) grayscale(${grayscale ? 100 : 0}%)`
+    };
+  };
+
   // --- RENDER ---
 
-  // REVIEW MODE
   if (reviewData.length > 0) {
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
@@ -428,7 +577,7 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
                 {isVerifying ? (
                     <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold animate-pulse">
                         <Globe className="w-3 h-3 animate-spin" />
-                        Verifying Spelling with Gemini 3 Pro...
+                        Verifying Spelling with WEB Search...
                     </div>
                 ) : (
                     <div className="flex items-center gap-2 px-3 py-1 bg-green-50 text-green-700 rounded-full text-xs font-bold">
@@ -440,11 +589,11 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
 
             <div className="space-y-4 mb-6">
                 {reviewData.map((med, idx) => (
-                    <div key={idx} className="flex flex-col sm:flex-row gap-3 p-4 bg-slate-50 border border-slate-200 rounded-lg relative group hover:border-teal-200 transition-colors">
+                    <div key={med.id || idx} className="flex flex-col sm:flex-row gap-3 p-4 bg-slate-50 border border-slate-200 rounded-lg relative group hover:border-teal-200 transition-colors">
                          <div className="flex-1 space-y-2">
                              <div className="flex gap-2">
                                 <input 
-                                    className="flex-1 p-2 border border-slate-300 rounded text-sm font-bold text-slate-800 focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                                    className="flex-1 p-2 border border-slate-300 rounded text-sm font-bold text-slate-900 bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none"
                                     value={med.name || ''}
                                     placeholder="Medication Name"
                                     onChange={(e) => handleUpdateReviewItem(idx, 'name', e.target.value)}
@@ -459,13 +608,13 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
 
                              <div className="flex gap-2">
                                 <input 
-                                    className="flex-1 p-2 border border-slate-300 rounded text-xs text-slate-600"
+                                    className="flex-1 p-2 border border-slate-300 rounded text-xs text-slate-900 bg-white"
                                     value={med.dosage || ''}
                                     placeholder="Dosage"
                                     onChange={(e) => handleUpdateReviewItem(idx, 'dosage', e.target.value)}
                                 />
                                 <input 
-                                    className="flex-1 p-2 border border-slate-300 rounded text-xs text-slate-600"
+                                    className="flex-1 p-2 border border-slate-300 rounded text-xs text-slate-900 bg-white"
                                     value={med.frequency || ''}
                                     placeholder="Frequency"
                                     onChange={(e) => handleUpdateReviewItem(idx, 'frequency', e.target.value)}
@@ -478,7 +627,7 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
 
             <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
                 <button 
-                    onClick={() => setReviewData([...reviewData, { name: '' }])}
+                    onClick={() => setReviewData([...reviewData, { name: '', id: generateId() }])}
                     className="flex items-center gap-2 px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium text-sm"
                 >
                     <Plus className="w-4 h-4" /> Add Another
@@ -504,7 +653,6 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
       </h2>
       
       {isAnalyzing ? (
-         // LOADING STATE
          <div className="text-center p-8 w-full flex flex-col items-center justify-center min-h-[300px] bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
             <div className="text-5xl font-bold text-red-600 mb-6 font-mono tracking-tight">
               {timer.toFixed(1)}s
@@ -519,95 +667,197 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
             <p className="text-xs text-slate-400 mt-1">Using Gemini 2.5 Flash</p>
          </div>
       ) : editingImage ? (
-         // EDITOR STATE
          <div className="w-full flex flex-col items-center p-2 relative bg-slate-50 rounded-lg border border-slate-200">
              <div className="text-sm text-slate-500 mb-2 flex items-center justify-between w-full px-4">
-               <span className="flex items-center gap-2"><Crop className="w-4 h-4" /> Drag to Crop</span>
-               <span className="flex items-center gap-2"><RotateCw className="w-4 h-4" /> Rotate to adjust</span>
+               <span className="flex items-center gap-2 font-medium"><Crop className="w-4 h-4 text-teal-600" /> Drag to Crop</span>
+               <div className="flex gap-4">
+                 <span className="flex items-center gap-1.5"><Move className="w-3.5 h-3.5" /> Move</span>
+                 <span className="flex items-center gap-1.5"><RotateCw className="w-3.5 h-3.5" /> Rotate</span>
+               </div>
              </div>
              
-             <div 
-               ref={containerRef}
-               className="relative cursor-crosshair select-none touch-none max-h-[400px] overflow-hidden bg-black/5 rounded-md"
-               onMouseDown={handleMouseDown}
-               onMouseMove={handleMouseMove}
-               onMouseUp={handleMouseUp}
-               onMouseLeave={handleMouseUp}
-               onTouchStart={handleMouseDown}
-               onTouchMove={handleMouseMove}
-               onTouchEnd={handleMouseUp}
-             >
-               <img 
-                 ref={imageRef}
-                 src={editingImage} 
-                 alt="Crop target" 
-                 className={`max-w-full max-h-[400px] object-contain block select-none pointer-events-none transition-all duration-300 ${getFilterClass()}`}
-               />
-               
-               {cropRegion && (
-                 <div 
-                   className="absolute border-2 border-teal-500 bg-teal-500/20 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"
-                   style={{
-                     left: cropRegion.x,
-                     top: cropRegion.y,
-                     width: cropRegion.width,
-                     height: cropRegion.height,
-                   }}
-                 />
-               )}
+             {/* PRO EDITOR CANVAS */}
+             <div className="relative w-full overflow-hidden bg-black/5 rounded-md flex justify-center py-4 select-none">
+               <div 
+                 ref={containerRef}
+                 className="relative inline-block select-none touch-none shadow-xl"
+                 onMouseDown={handleMouseDown}
+                 onMouseMove={handleMouseMove}
+                 onMouseUp={handleMouseUp}
+                 onMouseLeave={handleMouseUp}
+                 onTouchStart={handleMouseDown}
+                 onTouchMove={handleMouseMove}
+                 onTouchEnd={handleMouseUp}
+               >
+                  <img 
+                    ref={imageRef}
+                    src={editingImage} 
+                    alt="Edit target"
+                    style={getEditorImageStyle()}
+                    className="max-w-full max-h-[500px] block pointer-events-none select-none"
+                    draggable={false}
+                  />
+
+                  {/* PRO CROP OVERLAY */}
+                  {cropRegion && (
+                    <>
+                      {/* Dark Overlay Outside Selection */}
+                      <div 
+                        className="absolute pointer-events-none"
+                        style={{
+                           inset: 0,
+                           boxShadow: `0 0 0 9999px rgba(0, 0, 0, 0.6)` // Dim outside
+                        }}
+                      />
+                      
+                      {/* Crop Box */}
+                      <div 
+                        className="absolute border border-white/80 shadow-[0_0_0_1px_rgba(0,0,0,0.5)] cursor-move"
+                        style={{
+                          left: cropRegion.x,
+                          top: cropRegion.y,
+                          width: cropRegion.width,
+                          height: cropRegion.height,
+                          zIndex: 10
+                        }}
+                      >
+                         {/* Rule of Thirds Grid */}
+                         <div className="absolute inset-0 flex flex-col pointer-events-none opacity-40">
+                            <div className="flex-1 border-b border-white/50"></div>
+                            <div className="flex-1 border-b border-white/50"></div>
+                            <div className="flex-1"></div>
+                         </div>
+                         <div className="absolute inset-0 flex pointer-events-none opacity-40">
+                            <div className="flex-1 border-r border-white/50"></div>
+                            <div className="flex-1 border-r border-white/50"></div>
+                            <div className="flex-1"></div>
+                         </div>
+
+                         {/* Resize Handles */}
+                         {/* Corners */}
+                         <div data-handle="nw" className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-white border border-slate-400 cursor-nw-resize z-20"></div>
+                         <div data-handle="ne" className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-white border border-slate-400 cursor-ne-resize z-20"></div>
+                         <div data-handle="sw" className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-white border border-slate-400 cursor-sw-resize z-20"></div>
+                         <div data-handle="se" className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-white border border-slate-400 cursor-se-resize z-20"></div>
+                         
+                         {/* Sides */}
+                         <div data-handle="n" className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border border-slate-400 cursor-n-resize z-20"></div>
+                         <div data-handle="s" className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-white border border-slate-400 cursor-s-resize z-20"></div>
+                         <div data-handle="w" className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 bg-white border border-slate-400 cursor-w-resize z-20"></div>
+                         <div data-handle="e" className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 bg-white border border-slate-400 cursor-e-resize z-20"></div>
+                      </div>
+                    </>
+                  )}
+               </div>
              </div>
 
-             <div className="flex flex-wrap gap-3 mt-4 justify-center">
-               <button 
-                 onClick={handleRotate}
-                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm"
-               >
-                 <RotateCw className="w-4 h-4" /> Rotate
-               </button>
-               
-               <button 
-                 onClick={cycleFilter}
-                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium shadow-sm transition-colors min-w-[140px] justify-center
-                    ${filterMode !== 'original' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-slate-300 text-slate-700'}`}
-               >
-                 {getFilterIcon()}
-                 {getFilterLabel()}
-               </button>
+             <div className="w-full p-4 mt-2 bg-white rounded-lg border border-slate-100 space-y-4">
+                <div className="flex items-center gap-2 text-slate-700 font-medium text-sm">
+                   <Sliders className="w-4 h-4" />
+                   Enhance Image
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                   <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] uppercase font-bold text-slate-400">
+                         <span>Brightness</span>
+                         <span>{brightness}%</span>
+                      </div>
+                      <input 
+                         type="range" 
+                         min="50" max="150" step="5"
+                         value={brightness}
+                         onChange={(e) => setBrightness(Number(e.target.value))}
+                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-600"
+                      />
+                   </div>
+                   
+                   <div className="space-y-1">
+                      <div className="flex justify-between text-[10px] uppercase font-bold text-slate-400">
+                         <span>Contrast</span>
+                         <span>{contrast}%</span>
+                      </div>
+                      <input 
+                         type="range" 
+                         min="50" max="200" step="5"
+                         value={contrast}
+                         onChange={(e) => setContrast(Number(e.target.value))}
+                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-teal-600"
+                      />
+                   </div>
+                </div>
 
+                <div className="flex gap-3">
+                   <button 
+                      onClick={() => setGrayscale(!grayscale)}
+                      className={`flex-1 py-1.5 rounded-md text-xs font-bold border transition-colors flex items-center justify-center gap-2
+                         ${grayscale ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                   >
+                      {grayscale ? <Check className="w-3 h-3" /> : <div className="w-3 h-3" />}
+                      B&W Mode
+                   </button>
+                   <button 
+                      onClick={handleRotate}
+                      className="flex-1 py-1.5 rounded-md text-xs font-bold border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 flex items-center justify-center gap-2"
+                   >
+                      <RotateCw className="w-3 h-3" /> Rotate 90°
+                   </button>
+                </div>
+             </div>
+
+             <div className="flex w-full gap-3 mt-4">
                <button 
                  onClick={() => setEditingImage(null)}
-                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm"
+                 className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium shadow-sm"
                >
                  <X className="w-4 h-4" /> Cancel
                </button>
                <button 
                  onClick={handleDoneEditing}
-                 className="flex items-center gap-2 px-6 py-2 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium shadow-md"
+                 className="flex-1 flex items-center justify-center gap-2 px-6 py-3 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-sm font-medium shadow-md"
                >
                  <Check className="w-4 h-4" /> Done
                </button>
              </div>
          </div>
       ) : isCameraOpen ? (
-          // CAMERA STATE
-          <div className="relative w-full flex flex-col items-center bg-black rounded-lg overflow-hidden h-[300px]">
+          <div className="relative w-full flex flex-col items-center bg-black rounded-lg overflow-hidden h-[400px]">
             <video 
               ref={videoRef} 
               autoPlay 
               playsInline 
+              muted
               className="w-full h-full object-cover"
             />
-            <div className="absolute bottom-4 flex gap-4 z-10">
-              <button onClick={stopCamera} className="p-3 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white">
+            
+            {/* ZOOM CONTROLS OVERLAY */}
+            {zoomCaps && (
+                <div className="absolute bottom-24 left-1/2 -translate-x-1/2 w-64 bg-black/60 backdrop-blur-md p-2 rounded-full flex items-center gap-3 border border-white/10 z-20 animate-in fade-in slide-in-from-bottom-2">
+                   <ZoomOut className="w-4 h-4 text-white/80" />
+                   <input 
+                      type="range" 
+                      min={zoomCaps.min} 
+                      max={zoomCaps.max} 
+                      step={zoomCaps.step} 
+                      value={zoom}
+                      onChange={handleZoomChange}
+                      className="flex-1 h-1.5 bg-white/30 rounded-lg appearance-none cursor-pointer accent-teal-500"
+                   />
+                   <ZoomIn className="w-4 h-4 text-white/80" />
+                   <span className="text-xs text-teal-400 font-bold font-mono w-8 text-right">{zoom.toFixed(1)}x</span>
+                </div>
+            )}
+            
+            <div className="absolute bottom-6 flex gap-6 z-10 items-center">
+              <button onClick={stopCamera} className="p-3 bg-white/10 hover:bg-white/20 backdrop-blur-sm rounded-full text-white transition-colors">
                 <X className="w-6 h-6" />
               </button>
-              <button onClick={handleCapture} className="p-3 bg-white text-teal-600 rounded-full shadow-lg border-4 border-teal-600/30 hover:scale-105 transition-all">
+              <button onClick={handleCapture} className="p-4 bg-white text-teal-600 rounded-full shadow-lg border-4 border-teal-600/30 hover:scale-105 active:scale-95 transition-all">
                 <Aperture className="w-8 h-8" />
               </button>
             </div>
           </div>
       ) : (
-          // MAIN STATE (List or Initial)
           <div className="flex flex-col gap-6">
              {scannedImages.length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
@@ -638,7 +888,6 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
              )}
 
              {scannedImages.length === 0 ? (
-                // Initial Big Buttons
                 <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-lg bg-slate-50 min-h-[300px] p-8 gap-4">
                     <div className="flex flex-col sm:flex-row justify-center gap-3 w-full">
                       <button 
@@ -659,7 +908,6 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
                     <p className="text-xs text-slate-500">Supported: PNG, JPG, WEBP</p>
                 </div>
              ) : (
-                // Actions for list
                 <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-100">
                     <button 
                       onClick={startCamera}

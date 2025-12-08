@@ -61,7 +61,7 @@ const extractJson = (text: string, type: 'array' | 'object'): any => {
 
 /**
  * Workflow 1: Prescription Analysis (Vision + OCR)
- * FAST MODE: Uses Gemini 2.5 Flash
+ * FAST MODE: Uses Gemini 2.5 Pro for better faster
  */
 export const analyzePrescriptionImage = async (
   images: { base64: string, mimeType: string }[]
@@ -76,7 +76,7 @@ export const analyzePrescriptionImage = async (
     Treat the images as pages of one or more prescriptions.
     Fields: name, dosage, frequency, duration, instructions, prescriber.
     Return strictly structured JSON. No markdown. No conversation.
-    Example: [{"name": "Amoxicillin", "dosage": "500mg", "frequency": "Twice Daily", "duration": "7 days", "instructions": "Take with food", "prescriber": "Dr. Smith"}]
+    Example: [{"name": "Amoxicillin", "dosage": "500mg", "frequency": "Twice Daily", "duration": "7 days", "instructions": "Take before food /after food", "prescriber": "Dr. Smith"}]
     Use null for missing fields.
   `;
 
@@ -125,7 +125,7 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
 
   const inputJson = JSON.stringify(meds);
 
-  // 1. Primary Attempt: Gemini 3 Pro + Google Search
+  // 1. Primary Attempt: Gemini 2.5 Flash + Google Search
   try {
     console.log("Attempting verification with Gemini 3 Pro (Search Enabled)...");
     const modelId = 'gemini-2.5-flash';
@@ -159,7 +159,7 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
     // 2. Fallback Attempt: Gemini 2.5 Flash
     try {
       console.log("Attempting fallback with Gemini 2.5 Flash...");
-      const modelId = 'gemini-2.5-flash';
+      const modelId = 'gemini-2.5-flash-lite';
       const prompt = `
         You are a medical data cleaner. Correct spelling errors in this medication list.
         Input: ${inputJson}
@@ -188,9 +188,13 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
 };
 
 /**
- * Workflow 2: Drug Interaction Checking + Indication Validation
+ * Workflow 2: Drug Interaction Checking + Indication + Location Based Diet
  */
-export const analyzeInteractions = async (meds: Medication[], patientConditions: string): Promise<AnalysisResult> => {
+export const analyzeInteractions = async (
+  meds: Medication[], 
+  patientConditions: string,
+  location: string
+): Promise<AnalysisResult> => {
   const ai = getAi();
   const modelId = 'gemini-3-pro-preview';
   
@@ -202,17 +206,19 @@ export const analyzeInteractions = async (meds: Medication[], patientConditions:
   })));
 
   const prompt = `
-    Act as a senior clinical safety architect. 
+    Act as a senior clinical safety architect and nutritionist. 
     
     Patient Context/Conditions: "${patientConditions}"
+    Patient Location: "${location || 'Unknown'}"
     Medication List: ${medListJson}
     
     TASKS:
-    1. Indication Check: Verify if each medication is appropriate for the stated "Patient Context". 
-       - If a medication treats a condition NOT listed in the Patient Context, mark status as "warning" or "unknown" and explain.
-       - If appropriate for the context, mark as "appropriate".
-    
-    2. Interaction Check: Identify drug-drug interactions, contraindications, and lifestyle warnings.
+    1. Indication Check: Verify if each medication is appropriate for the stated conditions.
+    2. Interaction Check: Identify drug-drug interactions and lifestyle warnings.
+    3. Location-Based Health Plan: Based on the "${location}" and the medications/conditions, provide a culturally appropriate diet and lifestyle plan.
+       - Suggest specific local foods (e.g., if India: millets, specific vegetables; if USA: local produce).
+       - Provide Breakfast, Lunch, Dinner, Snack ideas.
+       - Suggest Yoga/Exercise suitable for the conditions.
     
     Return STRICT JSON Object:
     {
@@ -229,12 +235,28 @@ export const analyzeInteractions = async (meds: Medication[], patientConditions:
       "indicationChecks": [
         {
           "medicationName": "Name",
-          "reason": "Inferred reason from drug class",
-          "status": "appropriate" | "warning" | "unknown",
-          "note": "Brief clinical explanation of whether this drug matches the patient's stated conditions."
+          "reason": "Inferred reason",
+          "status": "appropriate" | "warning" | "critical",
+          "note": "Brief clinical explanation."
         }
       ],
       "lifestyleWarnings": ["Warning 1", "Warning 2", "Warning 3"],
+      "dietPlan": {
+         "breakfast": "Meal idea...",
+         "lunch": "Meal idea...",
+         "dinner": "Meal idea...",
+         "snacks": "Snack options...",
+         "recommendedFoods": ["Specific Veg/Fruit", "Millets/Grains", "Superfoods"],
+         "avoidFoods": ["Specific Item", "Category"],
+         "hydration": "Guidance on water/fluids",
+         "nonVegRecommendation": "Advice on meat/fish consumption based on meds/health"
+      },
+      "lifestylePlan": {
+         "yoga": "Specific asanas or stretches",
+         "exercises": ["Exercise 1", "Exercise 2"],
+         "sleepDuration": "Recommended hours",
+         "caloricGuidance": "General advice on intake/burn"
+      },
       "summary": "Concise summary of safety and indication findings."
     }
   `;
@@ -255,13 +277,15 @@ export const analyzeInteractions = async (meds: Medication[], patientConditions:
 
     const result = extractJson(text, 'object');
     
-    // Validate structure
+    // Basic structural validation
     if (!result.interactions || !Array.isArray(result.interactions)) {
        throw new Error("Invalid JSON structure returned");
     }
     
-    // Ensure indicationChecks exists
+    // Ensure nested objects exist to prevent crashes
     if (!result.indicationChecks) result.indicationChecks = [];
+    if (!result.dietPlan) result.dietPlan = { recommendedFoods: [], avoidFoods: [] };
+    if (!result.lifestylePlan) result.lifestylePlan = { exercises: [] };
     
     return result as AnalysisResult;
 

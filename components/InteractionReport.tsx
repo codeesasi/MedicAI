@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, ShieldCheck, AlertOctagon, Info, Utensils, Zap, CheckCircle, HelpCircle } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, AlertOctagon, Info, Utensils, Zap, CheckCircle, HelpCircle, Moon, Activity, Coffee, Sun, Sunrise, Sunset, Leaf, XCircle } from 'lucide-react';
 import { AnalysisResult, Severity } from '../types';
 
 interface Props {
@@ -18,7 +18,7 @@ export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
         </div>
         <h3 className="text-xl font-bold text-slate-800">Analyzing Safety Profile</h3>
         <p className="text-slate-500 mt-2 text-center max-w-md">
-          Checking drug interactions and verifying if medications match your stated conditions...
+          Checking drug interactions, verifying condition matches, and generating your localized health plan...
         </p>
       </div>
     );
@@ -29,7 +29,9 @@ export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
       <div className="h-full flex flex-col items-center justify-center p-12 bg-slate-50 rounded-xl border border-dashed border-slate-300 min-h-[400px]">
         <ShieldCheck className="w-16 h-16 text-slate-300 mb-4" />
         <h3 className="text-lg font-medium text-slate-500">No Analysis Yet</h3>
-        <p className="text-sm text-slate-400">Add medications (with reason) and click "Check Safety"</p>
+        <p className="text-sm text-slate-400 text-center mt-2 max-w-xs">
+           Enter your location, add medications (with reason), and click "Check Safety" to get a comprehensive report.
+        </p>
       </div>
     );
   }
@@ -68,7 +70,7 @@ export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
         {result.indicationChecks && result.indicationChecks.length > 0 && (
           <div>
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <CheckCircle className="w-4 h-4" /> Indication Verification
+              <CheckCircle className="w-4 h-4" /> Is Correct Tablet
             </h3>
             <div className="grid grid-cols-1 gap-3">
               {result.indicationChecks.map((check, idx) => (
@@ -132,16 +134,120 @@ export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
           </div>
         </div>
 
-        {/* Lifestyle Warnings */}
+        {/* DIET PLAN SECTION */}
+        {result.dietPlan && (
+           <div>
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Utensils className="w-4 h-4 text-orange-500" /> Localized Diet Plan
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 {/* Meals */}
+                 <div className="space-y-3">
+                    <div className="p-3 bg-orange-50 border border-orange-100 rounded-lg">
+                       <div className="flex items-center gap-2 text-orange-700 font-bold text-xs uppercase mb-1">
+                          <Sunrise className="w-3.5 h-3.5" /> Breakfast
+                       </div>
+                       <p className="text-sm text-slate-700 leading-relaxed">{result.dietPlan.breakfast}</p>
+                    </div>
+                    <div className="p-3 bg-orange-50 border border-orange-100 rounded-lg">
+                       <div className="flex items-center gap-2 text-orange-700 font-bold text-xs uppercase mb-1">
+                          <Sun className="w-3.5 h-3.5" /> Lunch
+                       </div>
+                       <p className="text-sm text-slate-700 leading-relaxed">{result.dietPlan.lunch}</p>
+                    </div>
+                 </div>
+
+                 <div className="space-y-3">
+                    <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-lg">
+                       <div className="flex items-center gap-2 text-indigo-700 font-bold text-xs uppercase mb-1">
+                          <Sunset className="w-3.5 h-3.5" /> Dinner
+                       </div>
+                       <p className="text-sm text-slate-700 leading-relaxed">{result.dietPlan.dinner}</p>
+                    </div>
+                    <div className="p-3 bg-teal-50 border border-teal-100 rounded-lg">
+                       <div className="flex items-center gap-2 text-teal-700 font-bold text-xs uppercase mb-1">
+                          <Coffee className="w-3.5 h-3.5" /> Snacks / Hydration
+                       </div>
+                       <p className="text-sm text-slate-700 leading-relaxed">{result.dietPlan.snacks}</p>
+                       <p className="text-xs text-teal-600 mt-1 italic">{result.dietPlan.hydration}</p>
+                    </div>
+                 </div>
+              </div>
+
+              {/* Specific Food Lists */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                 <div className="p-3 bg-green-50 border border-green-100 rounded-lg">
+                     <div className="flex items-center gap-2 text-green-700 font-bold text-xs uppercase mb-2">
+                        <Leaf className="w-3.5 h-3.5" /> Highly Recommended
+                     </div>
+                     <ul className="text-sm text-slate-700 space-y-1 list-disc list-inside">
+                        {result.dietPlan.recommendedFoods.map((f, i) => <li key={i}>{f}</li>)}
+                     </ul>
+                 </div>
+                 <div className="p-3 bg-red-50 border border-red-100 rounded-lg">
+                     <div className="flex items-center gap-2 text-red-700 font-bold text-xs uppercase mb-2">
+                        <XCircle className="w-3.5 h-3.5" /> Foods to Avoid
+                     </div>
+                     <ul className="text-sm text-slate-700 space-y-1 list-disc list-inside">
+                        {result.dietPlan.avoidFoods.map((f, i) => <li key={i}>{f}</li>)}
+                     </ul>
+                 </div>
+              </div>
+              
+              {/* Non-Veg / Warning */}
+              {result.dietPlan.nonVegRecommendation && (
+                 <div className="mt-3 p-3 bg-slate-100 rounded-lg text-xs text-slate-600 border border-slate-200">
+                    <span className="font-bold">Note on Meat/Fish:</span> {result.dietPlan.nonVegRecommendation}
+                 </div>
+              )}
+           </div>
+        )}
+
+        {/* Lifestyle & Exercise */}
+        {result.lifestylePlan && (
+           <div>
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-purple-500" /> Activity & Sleep
+              </h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="p-4 bg-purple-50 border border-purple-100 rounded-lg col-span-2">
+                      <div className="font-bold text-purple-800 text-sm mb-2">Recommended Exercises & Yoga</div>
+                      <p className="text-sm text-slate-700 mb-2 font-medium">{result.lifestylePlan.yoga}</p>
+                      <div className="flex flex-wrap gap-2">
+                         {result.lifestylePlan.exercises.map((ex, i) => (
+                            <span key={i} className="px-2 py-1 bg-white rounded border border-purple-200 text-xs text-purple-700">{ex}</span>
+                         ))}
+                      </div>
+                  </div>
+                  
+                  <div className="space-y-3">
+                     <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-center">
+                        <div className="flex items-center justify-center gap-2 text-blue-700 font-bold text-xs uppercase mb-1">
+                           <Moon className="w-3.5 h-3.5" /> Sleep
+                        </div>
+                        <div className="text-lg font-bold text-slate-800">{result.lifestylePlan.sleepDuration}</div>
+                     </div>
+                     <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center">
+                        <div className="text-slate-500 font-bold text-[10px] uppercase mb-1">Caloric Balance</div>
+                        <div className="text-xs text-slate-700">{result.lifestylePlan.caloricGuidance}</div>
+                     </div>
+                  </div>
+              </div>
+           </div>
+        )}
+
+        {/* General Lifestyle Warnings */}
         {result.lifestyleWarnings && result.lifestyleWarnings.length > 0 && (
           <div>
             <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Utensils className="w-4 h-4" /> Lifestyle & Food
+              <AlertTriangle className="w-4 h-4" /> General Precautions
             </h3>
             <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {result.lifestyleWarnings.map((warn, idx) => (
                 <li key={idx} className="p-3 bg-slate-50 border border-slate-200 rounded text-slate-700 text-sm flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 mt-1.5 flex-shrink-0"></div>
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0"></div>
                   {warn}
                 </li>
               ))}
