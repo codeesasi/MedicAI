@@ -3,6 +3,8 @@
   "description": "A client-side medication safety assistant using Gemini 3 Pro for prescription OCR and drug interaction analysis.",
   "requestFramePermissions": [
     "camera",
-    "microphone"
+    "microphone",
+    "geolocation",
+    "bluetooth"
   ]
 }

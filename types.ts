@@ -1,3 +1,12 @@
+
+export interface Vital {
+  id: string;
+  key: string;
+  value: string;
+}
+
+export type PatientDetails = Vital[];
+
 export interface Medication {
   id: string;
   name: string; // Generic or Brand
@@ -63,5 +72,6 @@ export interface AnalysisResult {
 
 export interface OcrResult {
   medications: Medication[];
+  patientDetails: PatientDetails;
   confidence: number;
 }

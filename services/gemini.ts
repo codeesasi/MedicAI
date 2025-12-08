@@ -1,5 +1,6 @@
+
 import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { Medication, AnalysisResult } from '../types';
+import { Medication, AnalysisResult, PatientDetails, Vital } from '../types';
 
 // Helper to get initialized client at runtime
 const getAi = () => {
@@ -59,25 +60,32 @@ const extractJson = (text: string, type: 'array' | 'object'): any => {
   throw new Error(`No valid JSON ${type} found in response.`);
 };
 
+const generateId = () => Math.random().toString(36).substr(2, 9);
+
 /**
  * Workflow 1: Prescription Analysis (Vision + OCR)
  * FAST MODE: Uses Gemini 2.5 Pro for better faster
  */
 export const analyzePrescriptionImage = async (
   images: { base64: string, mimeType: string }[]
-): Promise<Partial<Medication>[]> => {
+): Promise<{ medications: Partial<Medication>[], patientDetails: PatientDetails }> => {
   const ai = getAi();
   // Use Flash for high-speed vision tasks
   const modelId = 'gemini-2.5-pro'; 
   console.log("AI ImageScan started with", modelId, "Image count:", images.length);
   
   const prompt = `
-    Extract medication details from these prescription images into a JSON Array.
-    Treat the images as pages of one or more prescriptions.
-    Fields: name, dosage, frequency, duration, instructions, prescriber.
+    Extract data from these prescription images into a strict JSON Object.
+    
+    1. "medications": Array of medications. Fields: name, dosage, frequency, duration, instructions, prescriber.
+    2. "patient": Object containing patient vitals. Fields: age, weight, bloodPressure, gender. Use null or empty string if not clearly visible.
+    
     Return strictly structured JSON. No markdown. No conversation.
-    Example: [{"name": "Amoxicillin", "dosage": "500mg", "frequency": "Twice Daily", "duration": "7 days", "instructions": "Take before food /after food", "prescriber": "Dr. Smith"}]
-    Use null for missing fields.
+    Example: 
+    {
+      "medications": [{"name": "Amoxicillin", "dosage": "500mg", "frequency": "Twice Daily", "duration": "7 days", "instructions": "Take after food", "prescriber": "Dr. Smith"}],
+      "patient": {"age": "45", "weight": "70kg", "bloodPressure": "120/80", "gender": "Male", "body temprature":"30"}
+    }
   `;
 
   // Prepare parts for multiple images
@@ -106,7 +114,34 @@ export const analyzePrescriptionImage = async (
     const text = response.text;
     if (!text) throw new Error("No response from AI model");
     console.log("AI ImageScan completed");
-    return extractJson(text, 'array');
+    
+    const result = extractJson(text, 'object');
+    
+    // Map patient object to Vital[]
+    const rawPatient = result.patient || {};
+    const mapping: Record<string, string> = {
+        age: 'Age',
+        weight: 'Weight',
+        bloodPressure: 'Blood Pressure',
+        gender: 'Gender',
+        bp: 'Blood Pressure'
+    };
+    
+    const mappedVitals: Vital[] = Object.entries(rawPatient).map(([key, value]) => {
+        const cleanValue = String(value || '').trim();
+        if (!cleanValue) return null;
+        
+        return {
+            id: generateId(),
+            key: mapping[key] || key.charAt(0).toUpperCase() + key.slice(1),
+            value: cleanValue
+        };
+    }).filter((v): v is Vital => v !== null);
+
+    return {
+      medications: Array.isArray(result.medications) ? result.medications : [],
+      patientDetails: mappedVitals
+    };
   } catch (error: any) {
     console.error("OCR Failed:", error);
     if (error.message?.includes("API key")) {
@@ -125,10 +160,10 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
 
   const inputJson = JSON.stringify(meds);
 
-  // 1. Primary Attempt: Gemini 2.5 Flash + Google Search
+  // 1. Primary Attempt: Gemini 2.5 pro + Google Search
   try {
     console.log("Attempting verification with Gemini 3 Pro (Search Enabled)...");
-    const modelId = 'gemini-2.5-flash';
+    const modelId = 'gemini-2.5-pro';
     const prompt = `
       Act as a pharmacy auditor. Verify the spelling of these medication names using Google Search.
       Input: ${inputJson}
@@ -188,113 +223,149 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
 };
 
 /**
- * Workflow 2: Drug Interaction Checking + Indication + Location Based Diet
+ * Workflow 2: Agentic Safety & Wellness Analysis
+ * Splits the task into two parallel agents for speed, cost-effectiveness, and web-grounded accuracy.
  */
+
+// AGENT 1: Clinical Safety Agent
+// Focused on DDI, Contraindications, Indications.
+const runClinicalSafetyAgent = async (
+    ai: GoogleGenAI, 
+    context: { medListJson: string, vitalsString: string, patientConditions: string }
+) => {
+    const prompt = `
+    Role: Clinical Safety Pharmacist Agent.
+    
+    Task: Analyze the following medication list for Safety and Indications.
+    Use Google Search to verify contraindications if necessary, but prioritize established medical guidelines.
+    
+    Patient Context:
+    Vitals: ${context.vitalsString}
+    Conditions: ${context.patientConditions}
+    Medications: ${context.medListJson}
+    
+    Requirements:
+    1. Indication Check: For each drug, is it appropriate for the patient's conditions?
+    2. Interaction Check: Identify Drug-Drug, Drug-Condition, and Drug-Vital interactions (e.g., Beta blockers with low HR).
+    
+    Output strictly VALID JSON with these keys:
+    {
+      "interactions": [ { "id": "uuid", "medicationsInvolved": [], "severity": "critical"|"moderate"|"minor", "description": "", "recommendation": "", "mechanism": "" } ],
+      "indicationChecks": [ { "medicationName": "", "reason": "", "status": "appropriate"|"warning"|"critical", "note": "" } ],
+      "summary": "Brief clinical summary."
+    }
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash', // Fast & Capable
+        contents: { parts: [{ text: prompt }] },
+        config: {
+            tools: [{ googleSearch: {} }],
+            temperature: 0.1,
+            safetySettings: SAFETY_SETTINGS,
+        }
+    });
+
+    return extractJson(response.text || "{}", 'object');
+};
+
+// AGENT 2: Wellness & Lifestyle Agent
+// Focused on Diet, Lifestyle, Location-based advice.
+const runWellnessAgent = async (
+    ai: GoogleGenAI, 
+    context: { medListJson: string, vitalsString: string, patientConditions: string, location: string }
+) => {
+    const prompt = `
+    Role: Local Wellness & Nutrition Agent.
+    
+    Task: Create a location-based Diet and Lifestyle plan.
+    Use Google Search to find local foods in "${context.location}" suitable for the patient's conditions.
+    
+    Patient Context:
+    Location: ${context.location || 'Unknown'}
+    Vitals: ${context.vitalsString}
+    Conditions: ${context.patientConditions}
+    Medications: ${context.medListJson}
+    
+    Requirements:
+    1. Diet Plan: Suggest local cuisine options for Breakfast, Lunch, Dinner.
+    2. Foods to Avoid: Specific to the meds/conditions.
+    3. Lifestyle: Yoga/Exercise suitable for the Vitals.
+    4. General Warnings: Sun sensitivity, Alcohol, caffeinated beverages, etc.
+    
+    Output strictly VALID JSON with these keys:
+    {
+      "dietPlan": { "breakfast": "", "lunch": "", "dinner": "", "snacks": "", "recommendedFoods": [], "avoidFoods": [], "hydration": "", "nonVegRecommendation": "", "juice": [], "sugar": [], "salt": [] },
+      "lifestylePlan": { "yoga": "", "exercises": [], "sleepDuration": "", "caloricGuidance": "","nutritionHabits":[] },
+      "lifestyleWarnings": []
+    }
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash', // Fast & Creative
+        contents: { parts: [{ text: prompt }] },
+        config: {
+            tools: [{ googleSearch: {} }], // Essential for local context
+            temperature: 0.5,
+            safetySettings: SAFETY_SETTINGS,
+        }
+    });
+
+    return extractJson(response.text || "{}", 'object');
+};
+
+
 export const analyzeInteractions = async (
   meds: Medication[], 
   patientConditions: string,
-  location: string
+  location: string,
+  patientDetails: PatientDetails
 ): Promise<AnalysisResult> => {
   const ai = getAi();
-  const modelId = 'gemini-3-pro-preview';
   
-  // Create a context-rich list
+  // Prepare Context
   const medListJson = JSON.stringify(meds.map(m => ({
     name: m.name,
     dosage: m.dosage,
     frequency: m.frequency
   })));
+  
+  const vitalsString = patientDetails
+    .map(v => `${v.key}: ${v.value}`)
+    .join(', ');
 
-  const prompt = `
-    Act as a senior clinical safety architect and nutritionist. 
-    
-    Patient Context/Conditions: "${patientConditions}"
-    Patient Location: "${location || 'Unknown'}"
-    Medication List: ${medListJson}
-    
-    TASKS:
-    1. Indication Check: Verify if each medication is appropriate for the stated conditions.
-    2. Interaction Check: Identify drug-drug interactions and lifestyle warnings.
-    3. Location-Based Health Plan: Based on the "${location}" and the medications/conditions, provide a culturally appropriate diet and lifestyle plan.
-       - Suggest specific local foods (e.g., if India: millets, specific vegetables; if USA: local produce).
-       - Provide Breakfast, Lunch, Dinner, Snack ideas.
-       - Suggest Yoga/Exercise suitable for the conditions.
-    
-    Return STRICT JSON Object:
-    {
-      "interactions": [
-        {
-          "id": "uuid",
-          "medicationsInvolved": ["Drug A", "Drug B"],
-          "severity": "critical" | "moderate" | "minor",
-          "description": "Explanation",
-          "recommendation": "Advice",
-          "mechanism": "Mechanism"
-        }
-      ],
-      "indicationChecks": [
-        {
-          "medicationName": "Name",
-          "reason": "Inferred reason",
-          "status": "appropriate" | "warning" | "critical",
-          "note": "Brief clinical explanation."
-        }
-      ],
-      "lifestyleWarnings": ["Warning 1", "Warning 2", "Warning 3"],
-      "dietPlan": {
-         "breakfast": "Meal idea...",
-         "lunch": "Meal idea...",
-         "dinner": "Meal idea...",
-         "snacks": "Snack options...",
-         "recommendedFoods": ["Specific Veg/Fruit", "Millets/Grains", "Superfoods"],
-         "avoidFoods": ["Specific Item", "Category"],
-         "hydration": "Guidance on water/fluids",
-         "nonVegRecommendation": "Advice on meat/fish consumption based on meds/health"
-      },
-      "lifestylePlan": {
-         "yoga": "Specific asanas or stretches",
-         "exercises": ["Exercise 1", "Exercise 2"],
-         "sleepDuration": "Recommended hours",
-         "caloricGuidance": "General advice on intake/burn"
-      },
-      "summary": "Concise summary of safety and indication findings."
-    }
-  `;
+  const context = { medListJson, vitalsString, patientConditions };
+
+  console.log("Starting Parallel Agentic Workflow...");
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { parts: [{ text: prompt }] },
-      config: {
-        temperature: 0.3,
-        responseMimeType: "application/json",
-        safetySettings: SAFETY_SETTINGS,
-      }
-    });
+    // Execute Agents in Parallel
+    const [safetyResult, wellnessResult] = await Promise.all([
+        runClinicalSafetyAgent(ai, context),
+        runWellnessAgent(ai, { ...context, location })
+    ]);
 
-    const text = response.text;
-    if (!text) throw new Error("Empty response from AI");
+    console.log("Agents Finished. Merging Results.");
 
-    const result = extractJson(text, 'object');
+    // Merge Results
+    const finalResult: AnalysisResult = {
+        interactions: safetyResult.interactions || [],
+        indicationChecks: safetyResult.indicationChecks || [],
+        summary: safetyResult.summary || "Analysis complete.",
+        
+        dietPlan: wellnessResult.dietPlan || { recommendedFoods: [], avoidFoods: [] },
+        lifestylePlan: wellnessResult.lifestylePlan || { exercises: [] },
+        lifestyleWarnings: wellnessResult.lifestyleWarnings || []
+    };
     
-    // Basic structural validation
-    if (!result.interactions || !Array.isArray(result.interactions)) {
-       throw new Error("Invalid JSON structure returned");
-    }
-    
-    // Ensure nested objects exist to prevent crashes
-    if (!result.indicationChecks) result.indicationChecks = [];
-    if (!result.dietPlan) result.dietPlan = { recommendedFoods: [], avoidFoods: [] };
-    if (!result.lifestylePlan) result.lifestylePlan = { exercises: [] };
-    
-    return result as AnalysisResult;
+    return finalResult;
 
   } catch (error: any) {
-    console.error("Interaction Check Failed:", error);
+    console.error("Agentic Workflow Failed:", error);
     if (error.message?.includes("API key")) {
       throw new Error("Invalid or missing API Key.");
     }
-    throw new Error("Failed to analyze interactions. Please try again.");
+    throw new Error("Failed to complete safety analysis. Please try again.");
   }
 };
 

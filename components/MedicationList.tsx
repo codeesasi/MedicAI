@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
-import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse, MapPin, Loader2 } from 'lucide-react';
-import { Medication } from '../types';
+import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse, MapPin, Loader2, User, Scale, Thermometer, Ruler, Droplet, Wind } from 'lucide-react';
+import { Medication, PatientDetails, Vital } from '../types';
 
 interface Props {
   medications: Medication[];
@@ -8,17 +9,34 @@ interface Props {
   onAdd: (med: Medication) => void;
   onUpdate: (med: Medication) => void;
   onClear: () => void;
-  onAnalyzeInteractions: (conditions: string, location: string) => void;
+  onAnalyzeInteractions: () => void;
+  
+  // Shared State
+  patientDetails: PatientDetails;
+  onUpdatePatientDetails: (details: PatientDetails) => void;
+  patientConditions: string;
+  setPatientConditions: (val: string) => void;
+  location: string;
+  setLocation: (val: string) => void;
 }
 
-export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, onUpdate, onClear, onAnalyzeInteractions }) => {
+export const MedicationList: React.FC<Props> = ({ 
+    medications, 
+    onRemove, 
+    onAdd, 
+    onUpdate, 
+    onClear, 
+    onAnalyzeInteractions,
+    patientDetails,
+    onUpdatePatientDetails,
+    patientConditions,
+    setPatientConditions,
+    location,
+    setLocation
+}) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  
-  // Patient Condition & Location State
-  const [patientConditions, setPatientConditions] = useState('');
-  const [location, setLocation] = useState('');
   const [isLocating, setIsLocating] = useState(false);
   
   // Expanded Form State
@@ -158,9 +176,48 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
     );
   };
 
+  // --- Dynamic Vitals Logic ---
+  const handleAddVital = () => {
+    const newVital: Vital = {
+        id: Math.random().toString(36).substr(2, 9),
+        key: '',
+        value: ''
+    };
+    onUpdatePatientDetails([...patientDetails, newVital]);
+  };
+
+  const handleRemoveVital = (id: string) => {
+    onUpdatePatientDetails(patientDetails.filter(v => v.id !== id));
+  };
+
+  const handleUpdateVital = (id: string, field: 'key' | 'value', val: string) => {
+    onUpdatePatientDetails(patientDetails.map(v => 
+        v.id === id ? { ...v, [field]: val } : v
+    ));
+  };
+
+  const getVitalIcon = (name: string) => {
+    const k = name.toLowerCase();
+    if (k.includes('age') || k.includes('year') || k.includes('dob')) return <Calendar className="w-3.5 h-3.5 text-slate-400" />;
+    if (k.includes('weight') || k.includes('kg') || k.includes('lbs') || k.includes('mass')) return <Scale className="w-3.5 h-3.5 text-slate-400" />;
+    if (k.includes('pressure') || k.includes('bp')) return <Activity className="w-3.5 h-3.5 text-slate-400" />;
+    if (k.includes('gender') || k.includes('sex') || k.includes('male')) return <User className="w-3.5 h-3.5 text-slate-400" />;
+    if (k.includes('height') || k.includes('cm') || k.includes('ft')) return <Ruler className="w-3.5 h-3.5 text-slate-400" />;
+    if (k.includes('temp')) return <Thermometer className="w-3.5 h-3.5 text-slate-400" />;
+    if (k.includes('sugar') || k.includes('glucose')) return <Droplet className="w-3.5 h-3.5 text-slate-400" />;
+    if (k.includes('heart') || k.includes('pulse') || k.includes('rate')) return <HeartPulse className="w-3.5 h-3.5 text-slate-400" />;
+    if (k.includes('oxy') || k.includes('spo2')) return <Wind className="w-3.5 h-3.5 text-slate-400" />;
+    return <Activity className="w-3.5 h-3.5 text-slate-300" />;
+  };
+
   const formatDate = (timestamp: number) => {
     return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
+  
+  // Validation: Check if Age and Weight roughly exist in the keys
+  const hasAge = patientDetails.some(v => v.key.toLowerCase().includes('age') && v.value);
+  const hasWeight = patientDetails.some(v => v.key.toLowerCase().includes('weight') && v.value);
+  const isReadyToCheck = medications.length > 0 && patientConditions.trim() && hasAge && hasWeight;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-full relative">
@@ -373,18 +430,80 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
       {/* Global Condition & Location Inputs */}
       <div className="p-4 bg-slate-50 border-t border-slate-100 flex-none space-y-4">
           
+          {/* PATIENT VITALS SECTION */}
+          <div>
+             <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                   <User className="w-4 h-4 text-teal-500" /> Patient Details
+                </label>
+                <button 
+                  onClick={handleAddVital}
+                  className="text-xs text-teal-600 font-bold hover:text-teal-800 flex items-center gap-1"
+                >
+                   <Plus className="w-3 h-3" /> Add Vital
+                </button>
+             </div>
+             
+             <div className="space-y-2">
+                {patientDetails.map((vital) => (
+                    <div key={vital.id} className="flex gap-2 items-center group">
+                        <div className="relative flex-[2]">
+                            <div className="absolute left-2 top-1/2 -translate-y-1/2">
+                                {getVitalIcon(vital.key)}
+                            </div>
+                            <input 
+                                type="text" 
+                                placeholder="Name (e.g. Age)"
+                                className="w-full pl-8 p-2 text-xs rounded border border-slate-300 bg-white focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                value={vital.key}
+                                onChange={(e) => handleUpdateVital(vital.id, 'key', e.target.value)}
+                            />
+                        </div>
+                        <div className="flex-[3]">
+                            <input 
+                                type="text" 
+                                placeholder="Value (e.g. 25)"
+                                className="w-full p-2 text-xs rounded border border-slate-300 bg-white focus:ring-1 focus:ring-teal-500 focus:border-teal-500"
+                                value={vital.value}
+                                onChange={(e) => handleUpdateVital(vital.id, 'value', e.target.value)}
+                            />
+                        </div>
+                        <button 
+                            onClick={() => handleRemoveVital(vital.id)}
+                            className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                        >
+                            <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
+                ))}
+                
+                {patientDetails.length === 0 && (
+                    <div className="text-center py-2 border border-dashed border-slate-200 rounded bg-slate-50/50">
+                        <span className="text-[10px] text-slate-400">No vitals added. Add Age & Weight for safety checks.</span>
+                    </div>
+                )}
+             </div>
+
+             {!hasAge && !hasWeight && medications.length > 0 && (
+                <div className="text-[10px] text-amber-600 mt-2 flex items-center gap-1 bg-amber-50 p-2 rounded">
+                    <AlertTriangle className="w-3 h-3 flex-shrink-0" /> 
+                    <span>Please add <strong>Age</strong> and <strong>Weight</strong> to enable safety checks.</span>
+                </div>
+             )}
+          </div>
+
           {/* Location Input */}
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
                 <MapPin className="w-4 h-4 text-rose-500" />
-                Your Location <span className="text-[10px] font-normal text-slate-400 lowercase">(for diet & lifestyle context)</span>
+                Location <span className="text-[10px] font-normal text-slate-400 lowercase">(for diet context)</span>
             </label>
             <div className="flex gap-2">
                 <input
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Enter City, Country (e.g. Bangalore, India)"
+                    placeholder="Enter City, Country"
                     className="flex-1 p-2 rounded border border-slate-300 text-sm focus:ring-2 focus:ring-rose-500 bg-white text-slate-900"
                 />
                 <button
@@ -402,13 +521,13 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
           <div>
             <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 flex items-center gap-2">
                 <HeartPulse className="w-4 h-4 text-indigo-500" />
-                Patient Conditions / Reason for Checkup
+                Condition / Reason
             </label>
             <textarea
                 value={patientConditions}
                 onChange={(e) => setPatientConditions(e.target.value)}
-                placeholder="e.g. I have hypertension and occasional back pain. I'm taking these for..."
-                className="w-full p-3 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[80px] resize-none bg-white text-slate-900"
+                placeholder="e.g. Hypertension, Diabetes..."
+                className="w-full p-3 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 min-h-[60px] resize-none bg-white text-slate-900"
             />
           </div>
           
@@ -421,10 +540,10 @@ export const MedicationList: React.FC<Props> = ({ medications, onRemove, onAdd, 
               Add Manual
             </button>
             <button 
-              onClick={() => onAnalyzeInteractions(patientConditions, location)}
-              disabled={medications.length === 0 || !patientConditions.trim()}
+              onClick={onAnalyzeInteractions}
+              disabled={!isReadyToCheck}
               className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-bold text-white shadow-md transition-all
-                ${medications.length === 0 || !patientConditions.trim() 
+                ${!isReadyToCheck
                   ? 'bg-slate-300 cursor-not-allowed opacity-70' 
                   : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'}`}
             >

@@ -1,5 +1,5 @@
-import React from 'react';
-import { AlertTriangle, ShieldCheck, AlertOctagon, Info, Utensils, Zap, CheckCircle, HelpCircle, Moon, Activity, Coffee, Sun, Sunrise, Sunset, Leaf, XCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { AlertTriangle, ShieldCheck, AlertOctagon, Info, Utensils, Zap, CheckCircle, HelpCircle, Moon, Activity, Coffee, Sun, Sunrise, Sunset, Leaf, XCircle, Brain, Search, FileText } from 'lucide-react';
 import { AnalysisResult, Severity } from '../types';
 
 interface Props {
@@ -7,19 +7,84 @@ interface Props {
   isLoading: boolean;
 }
 
+const FACTS = [
+  "Grapefruit juice can interact with statins and blood pressure medications.",
+  "Always finish your full course of antibiotics, even if you feel better.",
+  "Alcohol can dangerously increase the sedative effects of many medicines.",
+  "Certain vitamins can affect how blood thinners work in your body.",
+  "Keeping a medication list helps emergency responders treat you safely.",
+  "Double-checking dosages prevents accidental overdoses.",
+  "Store medications in a cool, dry place, not in a bathroom cabinet."
+];
+
 export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
+  const [factIndex, setFactIndex] = useState(0);
+
+  useEffect(() => {
+    if (!isLoading) return;
+    const timer = setInterval(() => {
+      setFactIndex((prev) => (prev + 1) % FACTS.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [isLoading]);
+
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center p-12 bg-white rounded-xl shadow-sm border border-slate-100 min-h-[400px]">
-        <div className="relative w-20 h-20 mb-6">
-          <div className="absolute inset-0 border-4 border-slate-100 rounded-full"></div>
-          <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
-          <Zap className="absolute inset-0 m-auto text-indigo-600 w-8 h-8 animate-pulse" />
+      <div className="h-full flex flex-col items-center justify-center p-8 bg-white rounded-xl shadow-sm border border-slate-100 min-h-[500px] relative overflow-hidden">
+        {/* Background Ambient Animation */}
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent to-slate-50/50 pointer-events-none"></div>
+        
+        <div className="relative z-10 flex flex-col items-center max-w-md w-full">
+            {/* Animated Loader Graphic */}
+            <div className="relative w-24 h-24 mb-8">
+                <div className="absolute inset-0 rounded-full border-4 border-slate-100"></div>
+                <div className="absolute inset-0 rounded-full border-4 border-indigo-600 border-t-transparent animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center animate-pulse">
+                    <Brain className="w-10 h-10 text-indigo-600" />
+                </div>
+                
+                {/* Orbiting Elements */}
+                <div className="absolute inset-0 animate-[spin_3s_linear_infinite]">
+                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-white shadow-sm border border-slate-100 p-1.5 rounded-full">
+                        <Search className="w-3 h-3 text-teal-500" />
+                    </div>
+                </div>
+                <div className="absolute inset-0 animate-[spin_4s_linear_infinite_reverse]">
+                    <div className="absolute top-1/2 -right-2 -translate-y-1/2 bg-white shadow-sm border border-slate-100 p-1.5 rounded-full">
+                        <FileText className="w-3 h-3 text-rose-500" />
+                    </div>
+                </div>
+            </div>
+
+            <h3 className="text-xl font-bold text-slate-800 mb-1">Analyzing Safety Profile</h3>
+            <p className="text-slate-400 text-sm mb-8 animate-pulse">Consulting AI Medical Database...</p>
+
+            {/* Fact Card */}
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 w-full relative shadow-sm">
+                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 bg-white border border-slate-200 rounded-full text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap shadow-sm">
+                    Did you know?
+                 </div>
+                 
+                 <div className="min-h-[60px] flex items-center justify-center">
+                    <p 
+                      key={factIndex}
+                      className="text-center text-slate-700 font-medium text-lg leading-relaxed animate-in fade-in slide-in-from-bottom-2 duration-500"
+                    >
+                        "{FACTS[factIndex]}"
+                    </p>
+                 </div>
+            </div>
+            
+            {/* Progress Dots */}
+            <div className="flex gap-1.5 mt-4">
+                {FACTS.map((_, i) => (
+                    <div 
+                        key={i} 
+                        className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${i === factIndex ? 'bg-indigo-600 w-3' : 'bg-slate-300'}`}
+                    />
+                ))}
+            </div>
         </div>
-        <h3 className="text-xl font-bold text-slate-800">Analyzing Safety Profile</h3>
-        <p className="text-slate-500 mt-2 text-center max-w-md">
-          Checking drug interactions, verifying condition matches, and generating your localized health plan...
-        </p>
       </div>
     );
   }

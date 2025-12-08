@@ -1,18 +1,27 @@
+
 import React, { useState, useEffect } from 'react';
 import { Menu, X, HeartPulse, Camera, Pill, AlertCircle } from 'lucide-react';
 import { MedicationList } from './components/MedicationList';
 import { PrescriptionScanner } from './components/PrescriptionScanner';
 import { InteractionReport } from './components/InteractionReport';
 import { MedicalChatBot } from './components/MedicalChatBot';
+import { IntroModal } from './components/IntroModal';
 import { saveMedications, loadMedications } from './services/storage';
 import { analyzeInteractions, validateApiKey } from './services/gemini';
-import { Medication, AnalysisResult } from './types';
+import { Medication, AnalysisResult, PatientDetails, Vital } from './types';
 
 // Tab Enum
 enum Tab {
   SCAN = 'scan',
   CABINET = 'cabinet'
 }
+
+const DEFAULT_VITALS: Vital[] = [
+    { id: '1', key: 'Age', value: '' },
+    { id: '2', key: 'Weight', value: '' },
+    { id: '3', key: 'Blood Pressure', value: '' },
+    { id: '4', key: 'Gender', value: '' },
+];
 
 export default function App() {
   const [medications, setMedications] = useState<Medication[]>([]);
@@ -21,6 +30,12 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
+  const [showIntro, setShowIntro] = useState(false);
+
+  // Patient State (Global to share between Scan and Cabinet)
+  const [patientDetails, setPatientDetails] = useState<PatientDetails>(DEFAULT_VITALS);
+  const [patientConditions, setPatientConditions] = useState('');
+  const [location, setLocation] = useState('');
 
   // Load initial data
   useEffect(() => {
@@ -30,6 +45,12 @@ export default function App() {
     // If we have meds, default to cabinet, otherwise scan
     if (loaded.length > 0) {
       setActiveTab(Tab.CABINET);
+    }
+
+    // Check if user has seen intro
+    const hasSeenIntro = localStorage.getItem('medscript_intro_seen');
+    if (!hasSeenIntro) {
+      setShowIntro(true);
     }
   }, []);
 
@@ -59,8 +80,35 @@ export default function App() {
     setAnalysisResult(null);
   };
 
-  const handleScanComplete = (newMeds: Medication[]) => {
+  const handleScanComplete = (newMeds: Medication[], scannedDetails?: PatientDetails) => {
     newMeds.forEach(m => handleAddMedication(m));
+    
+    if (scannedDetails && scannedDetails.length > 0) {
+       // Smart Merge: Update existing keys if found, add new ones if not
+       setPatientDetails(prev => {
+          const newVitals = [...prev];
+          
+          scannedDetails.forEach(scanned => {
+             // Try to find a matching key (case-insensitive)
+             const existingIndex = newVitals.findIndex(
+                 v => v.key.toLowerCase().trim() === scanned.key.toLowerCase().trim()
+             );
+             
+             if (existingIndex !== -1) {
+                 // Update if we found a match and the new value is not empty
+                 if (scanned.value) {
+                     newVitals[existingIndex] = { ...newVitals[existingIndex], value: scanned.value };
+                 }
+             } else {
+                 // Add new vital
+                 newVitals.push(scanned);
+             }
+          });
+          
+          return newVitals;
+       });
+    }
+    
     setActiveTab(Tab.CABINET); // Redirect to cabinet to see results
   };
 
@@ -69,7 +117,7 @@ export default function App() {
     setAnalysisResult(null);
   };
 
-  const runAnalysis = async (patientConditions: string, location: string) => {
+  const runAnalysis = async () => {
     if (medications.length === 0) return;
     setAppError(null);
     
@@ -81,7 +129,7 @@ export default function App() {
     setIsAnalyzing(true);
     setAnalysisResult(null);
     try {
-      const result = await analyzeInteractions(medications, patientConditions, location);
+      const result = await analyzeInteractions(medications, patientConditions, location, patientDetails);
       setAnalysisResult(result);
     } catch (e: any) {
       console.error(e);
@@ -89,6 +137,11 @@ export default function App() {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleIntroComplete = () => {
+    localStorage.setItem('medscript_intro_seen', 'true');
+    setShowIntro(false);
   };
 
   const getPageTitle = () => {
@@ -194,7 +247,7 @@ export default function App() {
                    </p>
                  </div>
                  
-                 <PrescriptionScanner onMedicationsFound={handleScanComplete} />
+                 <PrescriptionScanner onScanComplete={handleScanComplete} />
                  
                  <div className="mt-8 text-center">
                     <button 
@@ -219,6 +272,13 @@ export default function App() {
                     onUpdate={handleUpdateMedication}
                     onClear={handleClearMedications}
                     onAnalyzeInteractions={runAnalysis}
+                    // State passed from App
+                    patientDetails={patientDetails}
+                    onUpdatePatientDetails={setPatientDetails}
+                    patientConditions={patientConditions}
+                    setPatientConditions={setPatientConditions}
+                    location={location}
+                    setLocation={setLocation}
                   />
                 </div>
 
@@ -234,6 +294,9 @@ export default function App() {
         
         {/* Floating Chat Bot */}
         <MedicalChatBot />
+        
+        {/* Intro Modal for First Time Users */}
+        {showIntro && <IntroModal onComplete={handleIntroComplete} />}
       </main>
     </div>
   );

@@ -1,12 +1,13 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Upload, XCircle, Aperture, X, Crop, Check, RotateCw, Plus, Trash2, ArrowRight, Globe, Sliders, Move, ZoomIn, ZoomOut } from 'lucide-react';
 import { analyzePrescriptionImage, verifyMedicationSpelling, validateApiKey } from '../services/gemini';
-import { Medication } from '../types';
+import { Medication, PatientDetails } from '../types';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 interface Props {
-  onMedicationsFound: (meds: Medication[]) => void;
+  onScanComplete: (meds: Medication[], patientDetails?: PatientDetails) => void;
 }
 
 interface CropRegion {
@@ -33,7 +34,7 @@ interface InteractionState {
   startCrop: CropRegion | null;
 }
 
-export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => {
+export const PrescriptionScanner: React.FC<Props> = ({ onScanComplete }) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -45,6 +46,7 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
   
   // Review & Verify State
   const [reviewData, setReviewData] = useState<Partial<Medication>[]>([]);
+  const [extractedPatientDetails, setExtractedPatientDetails] = useState<PatientDetails | undefined>(undefined);
   const [isVerifying, setIsVerifying] = useState(false);
   
   // Editor State
@@ -499,11 +501,14 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
     );
 
     try {
-      const extractedMeds = await Promise.race([
+      const result = await Promise.race([
         analyzePrescriptionImage(scannedImages.map(img => ({ base64: img.base64, mimeType: img.mimeType }))),
         timeoutPromise
-      ]) as Partial<Medication>[];
+      ]) as { medications: Partial<Medication>[], patientDetails: PatientDetails };
       
+      const extractedMeds = result.medications;
+      const extractedDetails = result.patientDetails;
+
       if (!extractedMeds || extractedMeds.length === 0) {
         throw new Error("No medications found. Please try a clearer image.");
       }
@@ -515,6 +520,7 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
       }));
 
       setReviewData(medsWithIds);
+      setExtractedPatientDetails(extractedDetails);
       setIsVerifying(true);
       setScannedImages([]);
       setProgress(100);
@@ -542,8 +548,9 @@ export const PrescriptionScanner: React.FC<Props> = ({ onMedicationsFound }) => 
         dateAdded: Date.now()
     }));
     
-    onMedicationsFound(newMeds);
+    onScanComplete(newMeds, extractedPatientDetails);
     setReviewData([]);
+    setExtractedPatientDetails(undefined);
   };
 
   const handleDeleteReviewItem = (index: number) => {
