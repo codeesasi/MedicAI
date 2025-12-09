@@ -8,7 +8,7 @@ import { MedicalChatBot } from './components/MedicalChatBot';
 import { TourOverlay, TourStep } from './components/TourOverlay';
 import { ReportPreviewModal } from './components/ReportPreviewModal';
 import { saveMedications, loadMedications } from './services/storage';
-import { analyzeInteractions, validateApiKey } from './services/gemini';
+import { analyzeInteractions, validateApiKey, translateAnalysisResult } from './services/gemini';
 import { Medication, AnalysisResult, PatientDetails, Vital } from './types';
 
 // Tab Enum
@@ -53,6 +53,11 @@ export default function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
   
+  // Translation State
+  const [translatedResult, setTranslatedResult] = useState<AnalysisResult | null>(null);
+  const [isTranslating, setIsTranslating] = useState(false);
+  const [currentLanguage, setCurrentLanguage] = useState('English');
+  
   // Onboarding State
   const [showTour, setShowTour] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -92,21 +97,27 @@ export default function App() {
 
   const handleAddMedication = (med: Medication) => {
     setMedications(prev => [...prev, med]);
-    setAnalysisResult(null); // Clear old analysis
-    setAppError(null);
+    resetAnalysis();
   };
 
   const handleUpdateMedication = (updatedMed: Medication) => {
     setMedications(prev => prev.map(m => m.id === updatedMed.id ? updatedMed : m));
-    setAnalysisResult(null); // Clear old analysis as data changed
+    resetAnalysis();
   };
 
   const handleClearMedications = () => {
     setMedications([]);
-    setAnalysisResult(null);
+    resetAnalysis();
     setPatientDetails(DEFAULT_VITALS);
     setPatientConditions('');
     setLocation('');
+  };
+  
+  const resetAnalysis = () => {
+    setAnalysisResult(null);
+    setTranslatedResult(null);
+    setCurrentLanguage('English');
+    setAppError(null);
   };
 
   const handleScanComplete = (newMeds: Medication[], scannedDetails?: PatientDetails) => {
@@ -143,7 +154,7 @@ export default function App() {
 
   const handleRemoveMedication = (id: string) => {
     setMedications(prev => prev.filter(m => m.id !== id));
-    setAnalysisResult(null);
+    resetAnalysis();
   };
 
   const runAnalysis = async () => {
@@ -157,6 +168,9 @@ export default function App() {
 
     setIsAnalyzing(true);
     setAnalysisResult(null);
+    setTranslatedResult(null);
+    setCurrentLanguage('English');
+    
     try {
       const result = await analyzeInteractions(medications, patientConditions, location, patientDetails);
       setAnalysisResult(result);
@@ -165,6 +179,28 @@ export default function App() {
       setAppError(e.message || "Analysis failed. Please check your connection and try again.");
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleTranslate = async (lang: string) => {
+    if (lang === 'English') {
+        setTranslatedResult(null);
+        setCurrentLanguage('English');
+        return;
+    }
+
+    if (!analysisResult) return;
+    
+    setIsTranslating(true);
+    try {
+        const translated = await translateAnalysisResult(analysisResult, lang);
+        setTranslatedResult(translated);
+        setCurrentLanguage(lang);
+    } catch (e: any) {
+        console.error(e);
+        setAppError(`Translation to ${lang} failed. Please try again.`);
+    } finally {
+        setIsTranslating(false);
     }
   };
 
@@ -313,13 +349,17 @@ export default function App() {
                     // Report Props
                     analysisResult={analysisResult}
                     onGeneratePdf={() => setShowReportModal(true)}
+                    // Translation Props
+                    onTranslate={handleTranslate}
+                    isTranslating={isTranslating}
+                    currentLanguage={currentLanguage}
                   />
                 </div>
 
-                {/* Right Column: Interaction Report */}
+                {/* Right Column: Interaction Report (Shows Translated Result if available) */}
                 <div className="xl:col-span-2 h-auto xl:h-full min-h-0">
                   <InteractionReport 
-                    result={analysisResult} 
+                    result={translatedResult || analysisResult} 
                     isLoading={isAnalyzing} 
                     patientDetails={patientDetails}
                     medications={medications}
@@ -345,7 +385,7 @@ export default function App() {
         {/* PDF Generation Modal */}
         {showReportModal && analysisResult && (
             <ReportPreviewModal 
-                result={analysisResult} 
+                result={translatedResult || analysisResult} 
                 patientDetails={patientDetails}
                 medications={medications}
                 onClose={() => setShowReportModal(false)}

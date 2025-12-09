@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Medication, AnalysisResult, PatientDetails, Vital, AI_MODELS } from '../types';
+import { Medication, AnalysisResult, PatientDetails, Vital, AI_MODELS, SUPPORTED_LANGUAGES } from '../types';
 
 // Helper to get initialized client at runtime
 const getAi = () => {
@@ -363,6 +363,105 @@ export const analyzeInteractions = async (
       throw new Error("Invalid or missing API Key.");
     }
     throw new Error("Failed to complete safety analysis. Please try again.");
+  }
+};
+
+/**
+ * Workflow 2.5: Multi-Language Translation & Detection Agents
+ */
+
+// Agent 1: Language Detector (Heuristic + LLM)
+export const detectLanguageFromLocation = async (location: string): Promise<string> => {
+  if (!location) return 'English';
+  
+  // Quick heuristic pass for obvious ones to save API calls
+  const loc = location.toLowerCase().trim();
+  if (loc.includes('usa') || loc.includes('uk') || loc.includes('england')) return 'English';
+  
+  console.log(`Detecting language for location: ${location}`);
+  
+  const ai = getAi();
+  const modelId = AI_MODELS.LANG; // Use Flash for extremely fast inference
+
+  const supportedList = SUPPORTED_LANGUAGES.map(l => l.code).join(', ');
+
+  const prompt = `
+    Role: Geolocation Linguistics Expert.
+    Task: Identify the primary regional language spoken in the following location.
+    
+    Location: "${location}"
+    
+    Rules:
+    1. Return ONLY the language name from this list: [${supportedList}].
+    2. If the location matches "Tamil Nadu", "Chennai", "Salem", "Madurai", "Coimbatore", "Trichy", "Erode", "Vellore", "Tirunelveli", return "Tamil".
+    3. If the location matches "Kerala", return "Malayalam".
+    4. If the location matches "Andhra" or "Telangana", return "Telugu".
+    5. If the location matches "Karnataka" or "Bangalore", return "Kannada".
+    6. If the location matches "West Bengal" or "Kolkata", return "Bengali".
+    7. If unsure or if it's a general global location, default to "English".
+    8. Return strictly just the string. No JSON, no preamble.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        temperature: 0.1,
+      }
+    });
+
+    const detectedLang = response.text?.trim() || 'English';
+    console.log(`AI Detected Language: ${detectedLang}`);
+    
+    // Validate against supported list
+    const isSupported = SUPPORTED_LANGUAGES.some(l => l.code === detectedLang);
+    return isSupported ? detectedLang : 'English';
+
+  } catch (e) {
+    console.warn("Language detection failed, defaulting to English", e);
+    return 'English';
+  }
+};
+
+// Agent 2: Translation Specialist
+export const translateAnalysisResult = async (result: AnalysisResult, targetLang: string): Promise<AnalysisResult> => {
+  if (targetLang === 'English') return result;
+
+  const ai = getAi();
+  const modelId = AI_MODELS.FLASH; // Flash is perfect for translation
+  
+  const prompt = `
+    Role: Professional Medical Translator.
+    
+    Task: Translate all VALUES in the following JSON object to ${targetLang}.
+    
+    Rules:
+    1. Keep all KEYS exactly the same (e.g., "summary", "dietPlan", "interactions").
+    2. Only translate the human-readable text values.
+    3. Keep medical terms accurate in the target language (e.g., in Tamil, use easy-to-read Tamil script).
+    4. Do not translate proper nouns if they don't have a translation (e.g., specific drug brand names).
+    5. Return strict valid JSON.
+    
+    Input JSON:
+    ${JSON.stringify(result)}
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.1,
+        safetySettings: SAFETY_SETTINGS,
+      }
+    });
+
+    return extractJson(response.text || "{}", 'object');
+  } catch (error) {
+    console.error("Translation Agent Failed:", error);
+    throw new Error(`Failed to translate to ${targetLang}.`);
   }
 };
 

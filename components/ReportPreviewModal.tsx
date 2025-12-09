@@ -65,8 +65,8 @@ export const ReportPreviewModal: React.FC<Props> = ({ result, patientDetails, me
     const clone = originalElement.cloneNode(true) as HTMLElement;
 
     // 2. Container setup to enforce A4 width context
-    // BUG FIX: Position fixed at 0,0 with negative Z-index ensures correct rendering context
-    // compared to left: -9999px which can cause blank renders in some browsers.
+    // FIX: Use fixed positioning with negative Z-index instead of negative left coordinate
+    // This ensures elements are within the viewport render tree for html2canvas
     const container = document.createElement('div');
     container.style.position = 'fixed'; 
     container.style.top = '0';

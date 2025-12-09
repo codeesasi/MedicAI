@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
-import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse, MapPin, Loader2, User, Scale, Thermometer, Ruler, Droplet, Wind, Download } from 'lucide-react';
-import { Medication, PatientDetails, Vital, AnalysisResult } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse, MapPin, Loader2, User, Scale, Thermometer, Ruler, Droplet, Wind, Download, Languages, Globe, RefreshCw } from 'lucide-react';
+import { Medication, PatientDetails, Vital, AnalysisResult, SUPPORTED_LANGUAGES } from '../types';
+import { detectLanguageFromLocation } from '../services/gemini';
 
 interface Props {
   medications: Medication[];
@@ -19,9 +20,12 @@ interface Props {
   location: string;
   setLocation: (val: string) => void;
   
-  // New Props for PDF Report
+  // New Props for PDF Report & Translation
   analysisResult: AnalysisResult | null;
   onGeneratePdf: () => void;
+  onTranslate: (lang: string) => void;
+  isTranslating: boolean;
+  currentLanguage: string;
 }
 
 export const MedicationList: React.FC<Props> = ({ 
@@ -38,12 +42,20 @@ export const MedicationList: React.FC<Props> = ({
     location,
     setLocation,
     analysisResult,
-    onGeneratePdf
+    onGeneratePdf,
+    onTranslate,
+    isTranslating,
+    currentLanguage
 }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
+  
+  // Translation Local State
+  const [selectedLang, setSelectedLang] = useState('English');
+  const [suggestedLang, setSuggestedLang] = useState('English');
+  const [isDetectingLang, setIsDetectingLang] = useState(false);
   
   // Expanded Form State
   const [formData, setFormData] = useState({ 
@@ -62,6 +74,29 @@ export const MedicationList: React.FC<Props> = ({
                   patientDetails.some(v => v.value.trim() !== '') || 
                   patientConditions.trim() !== '' || 
                   location.trim() !== '';
+
+  // Smart Language Detection when location changes
+  useEffect(() => {
+     // Debounce the effect to avoid calling API on every keystroke
+     const timer = setTimeout(async () => {
+         if (location.length > 3) {
+             setIsDetectingLang(true);
+             try {
+                const detected = await detectLanguageFromLocation(location);
+                setSuggestedLang(detected);
+                if (detected !== 'English' && selectedLang === 'English') {
+                    setSelectedLang(detected);
+                }
+             } catch (e) {
+                console.error("Lang detection error", e);
+             } finally {
+                setIsDetectingLang(false);
+             }
+         }
+     }, 1500);
+
+     return () => clearTimeout(timer);
+  }, [location]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -527,6 +562,11 @@ export const MedicationList: React.FC<Props> = ({
                     {isLocating ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                 </button>
             </div>
+            {isDetectingLang && (
+                <div className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin" /> Detecting local language...
+                </div>
+            )}
           </div>
 
           {/* Condition Input */}
@@ -565,15 +605,71 @@ export const MedicationList: React.FC<Props> = ({
                 </button>
              </div>
              
-             {/* PDF Report Button - Visible only when analysis is ready */}
+             {/* Analysis Actions (PDF + Translation) */}
              {analysisResult && (
-                <button 
-                    onClick={onGeneratePdf}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 font-bold transition-all animate-in fade-in slide-in-from-top-1"
-                >
-                    <Download className="w-4 h-4" />
-                    Download PDF Report
-                </button>
+                <div className="space-y-2 pt-2 border-t border-slate-200 animate-in fade-in slide-in-from-top-1">
+                    
+                    {/* PDF Download */}
+                    <button 
+                        onClick={onGeneratePdf}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 font-bold transition-all"
+                    >
+                        <Download className="w-4 h-4" />
+                        Download PDF Report
+                    </button>
+
+                    {/* Translation Panel */}
+                    <div className="bg-slate-100 p-3 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-2 mb-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                           <Globe className="w-3.5 h-3.5" />
+                           Translation Agent
+                        </div>
+                        
+                        <div className="flex flex-col gap-2">
+                             <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <select 
+                                        className="w-full appearance-none pl-3 pr-8 py-2 bg-white border border-slate-300 rounded text-sm text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                                        value={selectedLang}
+                                        onChange={(e) => setSelectedLang(e.target.value)}
+                                        disabled={isTranslating}
+                                    >
+                                        {SUPPORTED_LANGUAGES.map(lang => (
+                                            <option key={lang.code} value={lang.code}>
+                                                {lang.label} {lang.code === suggestedLang ? '(Suggested)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                        <Languages className="w-3.5 h-3.5" />
+                                    </div>
+                                </div>
+                             </div>
+
+                             <button 
+                                onClick={() => onTranslate(selectedLang)}
+                                disabled={isTranslating || (selectedLang === currentLanguage)}
+                                className={`w-full flex items-center justify-center gap-2 py-2 px-4 rounded text-sm font-bold transition-all
+                                   ${selectedLang === currentLanguage 
+                                      ? 'bg-slate-200 text-slate-400 cursor-default' 
+                                      : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm'}`}
+                             >
+                                {isTranslating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Languages className="w-3.5 h-3.5" />}
+                                {isTranslating ? 'Translating...' : selectedLang === currentLanguage ? 'Translated' : `Translate to ${selectedLang}`}
+                             </button>
+                             
+                             {currentLanguage !== 'English' && (
+                                 <button
+                                     onClick={() => onTranslate('English')}
+                                     disabled={isTranslating}
+                                     className="text-xs text-indigo-600 hover:underline text-center w-full py-1 flex items-center justify-center gap-1"
+                                 >
+                                     <RefreshCw className="w-3 h-3" /> Revert to English
+                                 </button>
+                             )}
+                        </div>
+                    </div>
+                </div>
              )}
           </div>
       </div>

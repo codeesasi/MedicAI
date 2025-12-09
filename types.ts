@@ -59,6 +59,7 @@ export interface LifestylePlan {
   exercises: string[];
   sleepDuration: string;
   caloricGuidance: string; // Intake/Burn
+  nutritionHabits?: string[];
 }
 
 export interface AnalysisResult {
@@ -80,10 +81,32 @@ export interface OcrResult {
 export const AI_MODELS = {
   // Complex reasoning and Agents (High Intelligence)
   PRO: 'gemini-3-pro-preview',
-  // Fast tasks, fallbacks, and simple text (Low Latency)
+  // Fast tasks, fallbacks, simple text, and translation (Low Latency)
   FLASH: 'gemini-2.5-flash',
   // Image generation
   IMAGE: 'gemini-2.5-flash-image',
-  // Fast ORC and Quick response
-  PLUS: 'gemini-2.5-pro'
+  // Fast ORC and Quick response (using 3-pro for better OCR)
+  PLUS: 'gemini-3-pro-preview',
+  // To identify language based on lication
+  LANG: 'gemini-2.0-flash-lite'
 } as const;
+
+export const SUPPORTED_LANGUAGES = [
+  { code: 'English', label: 'English' },
+  { code: 'Tamil', label: 'Tamil (தமிழ்)' },
+  { code: 'Hindi', label: 'Hindi (हिंदी)' },
+  { code: 'Spanish', label: 'Spanish (Español)' },
+  { code: 'French', label: 'French (Français)' },
+  { code: 'German', label: 'German (Deutsch)' },
+  { code: 'Chinese', label: 'Chinese (中文)' },
+  { code: 'Japanese', label: 'Japanese (日本語)' },
+  { code: 'Arabic', label: 'Arabic (العربية)' },
+  { code: 'Portuguese', label: 'Portuguese (Português)' },
+  { code: 'Russian', label: 'Russian (Русский)' },
+  { code: 'Italian', label: 'Italian (Italiano)' },
+  { code: 'Korean', label: 'Korean (한국어)' },
+  { code: 'Telugu', label: 'Telugu (తెలుగు)' },
+  { code: 'Malayalam', label: 'Malayalam (മലയാളം)' },
+  { code: 'Kannada', label: 'Kannada (कन्नड़)' },
+  { code: 'Bengali', label: 'Bengali (বাংলা)' }
+];
