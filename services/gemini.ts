@@ -383,8 +383,6 @@ export const detectLanguageFromLocation = async (location: string): Promise<stri
   const ai = getAi();
   const modelId = AI_MODELS.LANG; // Use Flash for extremely fast inference
 
-  const supportedList = SUPPORTED_LANGUAGES.map(l => l.code).join(', ');
-
   const prompt = `
     Role: Geolocation Linguistics Expert.
     Task: Identify the primary regional language spoken in the following location.
@@ -392,14 +390,7 @@ export const detectLanguageFromLocation = async (location: string): Promise<stri
     Location: "${location}"
     
     Rules:
-    1. Return ONLY the language name from this list: [${supportedList}].
-    2. If the location matches "Tamil Nadu", "Chennai", "Salem", "Madurai", "Coimbatore", "Trichy", "Erode", "Vellore", "Tirunelveli", return "Tamil".
-    3. If the location matches "Kerala", return "Malayalam".
-    4. If the location matches "Andhra" or "Telangana", return "Telugu".
-    5. If the location matches "Karnataka" or "Bangalore", return "Kannada".
-    6. If the location matches "West Bengal" or "Kolkata", return "Bengali".
-    7. If unsure or if it's a general global location, default to "English".
-    8. Return strictly just the string. No JSON, no preamble.
+    * Return strictly just the string. No JSON, no preamble.
   `;
 
   try {
@@ -414,9 +405,7 @@ export const detectLanguageFromLocation = async (location: string): Promise<stri
     const detectedLang = response.text?.trim() || 'English';
     console.log(`AI Detected Language: ${detectedLang}`);
     
-    // Validate against supported list
-    const isSupported = SUPPORTED_LANGUAGES.some(l => l.code === detectedLang);
-    return isSupported ? detectedLang : 'English';
+    return detectedLang ? detectedLang : 'English';
 
   } catch (e) {
     console.warn("Language detection failed, defaulting to English", e);

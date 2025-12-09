@@ -90,23 +90,3 @@ export const AI_MODELS = {
   // To identify language based on lication
   LANG: 'gemini-2.0-flash-lite'
 } as const;
-
-export const SUPPORTED_LANGUAGES = [
-  { code: 'English', label: 'English' },
-  { code: 'Tamil', label: 'Tamil (தமிழ்)' },
-  { code: 'Hindi', label: 'Hindi (हिंदी)' },
-  { code: 'Spanish', label: 'Spanish (Español)' },
-  { code: 'French', label: 'French (Français)' },
-  { code: 'German', label: 'German (Deutsch)' },
-  { code: 'Chinese', label: 'Chinese (中文)' },
-  { code: 'Japanese', label: 'Japanese (日本語)' },
-  { code: 'Arabic', label: 'Arabic (العربية)' },
-  { code: 'Portuguese', label: 'Portuguese (Português)' },
-  { code: 'Russian', label: 'Russian (Русский)' },
-  { code: 'Italian', label: 'Italian (Italiano)' },
-  { code: 'Korean', label: 'Korean (한국어)' },
-  { code: 'Telugu', label: 'Telugu (తెలుగు)' },
-  { code: 'Malayalam', label: 'Malayalam (മലയാളം)' },
-  { code: 'Kannada', label: 'Kannada (कन्नड़)' },
-  { code: 'Bengali', label: 'Bengali (বাংলা)' }
-];
