@@ -865,7 +865,7 @@ export const PrescriptionScanner: React.FC<Props> = ({ onScanComplete }) => {
             </div>
           </div>
       ) : (
-          <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-6" id="scanner-action-area">
              {scannedImages.length > 0 && (
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                    {scannedImages.map((img, idx) => (
@@ -905,6 +905,7 @@ export const PrescriptionScanner: React.FC<Props> = ({ onScanComplete }) => {
                         Take Photo
                       </button>
                       <button 
+                        type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className="flex items-center justify-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-5 py-3 rounded-lg font-medium transition-all shadow-sm active:scale-95 w-full sm:w-auto"
                       >

@@ -1,6 +1,6 @@
 
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from "@google/genai";
-import { Medication, AnalysisResult, PatientDetails, Vital } from '../types';
+import { GoogleGenAI } from "@google/genai";
+import { Medication, AnalysisResult, PatientDetails, Vital, AI_MODELS } from '../types';
 
 // Helper to get initialized client at runtime
 const getAi = () => {
@@ -17,12 +17,12 @@ export const validateApiKey = (): boolean => {
   return !!(key && key.trim().length > 0);
 };
 
-// Standard Safety Settings
-const SAFETY_SETTINGS = [
-  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE }
+// Standard Safety Settings using String Literals to avoid import issues
+const SAFETY_SETTINGS: any[] = [
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
 ];
 
 // Robust JSON Extraction
@@ -64,14 +64,13 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 
 /**
  * Workflow 1: Prescription Analysis (Vision + OCR)
- * FAST MODE: Uses Gemini 2.5 Pro for better faster
+ * Uses Gemini 3 Pro for high accuracy vision tasks
  */
 export const analyzePrescriptionImage = async (
   images: { base64: string, mimeType: string }[]
 ): Promise<{ medications: Partial<Medication>[], patientDetails: PatientDetails }> => {
   const ai = getAi();
-  // Use Flash for high-speed vision tasks
-  const modelId = 'gemini-2.5-pro'; 
+  const modelId = AI_MODELS.PLUS; 
   console.log("AI ImageScan started with", modelId, "Image count:", images.length);
   
   const prompt = `
@@ -160,10 +159,10 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
 
   const inputJson = JSON.stringify(meds);
 
-  // 1. Primary Attempt: Gemini 2.5 pro + Google Search
+  // 1. Primary Attempt: Gemini 3 Pro + Google Search
   try {
-    console.log("Attempting verification with Gemini 3 Pro (Search Enabled)...");
-    const modelId = 'gemini-2.5-pro';
+    console.log("Attempting verification with Pro model (Search Enabled)...");
+    const modelId = AI_MODELS.PLUS;
     const prompt = `
       Act as a pharmacy auditor. Verify the spelling of these medication names using Google Search.
       Input: ${inputJson}
@@ -191,10 +190,10 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
   } catch (error) {
     console.warn("Primary verification failed. Switching to Fallback...", error);
 
-    // 2. Fallback Attempt: Gemini 2.5 Flash
+    // 2. Fallback Attempt: Gemini Flash
     try {
-      console.log("Attempting fallback with Gemini 2.5 Flash...");
-      const modelId = 'gemini-2.5-flash-lite';
+      console.log("Attempting fallback with Flash model...");
+      const modelId = AI_MODELS.FLASH;
       const prompt = `
         You are a medical data cleaner. Correct spelling errors in this medication list.
         Input: ${inputJson}
@@ -228,7 +227,6 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
  */
 
 // AGENT 1: Clinical Safety Agent
-// Focused on DDI, Contraindications, Indications.
 const runClinicalSafetyAgent = async (
     ai: GoogleGenAI, 
     context: { medListJson: string, vitalsString: string, patientConditions: string }
@@ -257,7 +255,7 @@ const runClinicalSafetyAgent = async (
     `;
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', // Fast & Capable
+        model: AI_MODELS.PRO,
         contents: { parts: [{ text: prompt }] },
         config: {
             tools: [{ googleSearch: {} }],
@@ -270,7 +268,6 @@ const runClinicalSafetyAgent = async (
 };
 
 // AGENT 2: Wellness & Lifestyle Agent
-// Focused on Diet, Lifestyle, Location-based advice.
 const runWellnessAgent = async (
     ai: GoogleGenAI, 
     context: { medListJson: string, vitalsString: string, patientConditions: string, location: string }
@@ -302,10 +299,10 @@ const runWellnessAgent = async (
     `;
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', // Fast & Creative
+        model: AI_MODELS.PRO,
         contents: { parts: [{ text: prompt }] },
         config: {
-            tools: [{ googleSearch: {} }], // Essential for local context
+            tools: [{ googleSearch: {} }],
             temperature: 0.5,
             safetySettings: SAFETY_SETTINGS,
         }
@@ -374,7 +371,7 @@ export const analyzeInteractions = async (
  */
 export const sendChatMessage = async (currentMessage: string, history: { role: 'user' | 'model', text: string }[]): Promise<string> => {
   const ai = getAi();
-  const modelId = 'gemini-3-pro-preview';
+  const modelId = AI_MODELS.PRO;
 
   try {
     const chat = ai.chats.create({
@@ -397,5 +394,53 @@ export const sendChatMessage = async (currentMessage: string, history: { role: '
       throw new Error("Invalid or missing API Key.");
     }
     throw new Error("Failed to send message.");
+  }
+};
+
+/**
+ * Workflow 4: Report Image Generation
+ * Uses 'gemini-2.5-flash-image' for fast, creative illustrations.
+ */
+export const generateMedicalIllustration = async (topic: string): Promise<string> => {
+  const ai = getAi();
+  const modelId = AI_MODELS.IMAGE; 
+  
+  console.log(`Generating illustration for: ${topic}`);
+  
+  // Optimized prompt for abstract/geometric art which is less likely to hit safety filters than realistic medical requests
+  const prompt = `
+    Generate a simple, modern, abstract vector illustration of: "${topic}".
+    Style: Minimalist geometric shapes, flat design, icon style. 
+    Colors: Teal, Blue, White.
+    Context: App UI Icon.
+    No text. No realistic faces. No complex details.
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: { parts: [{ text: prompt }] },
+      config: {
+        temperature: 0.7, 
+        safetySettings: SAFETY_SETTINGS,
+      }
+    });
+
+    // Extract image from parts (Standard 2.5/3.0 structure)
+    const candidates = response.candidates;
+    if (candidates && candidates.length > 0) {
+        for (const part of candidates[0].content.parts) {
+            if (part.inlineData && part.inlineData.data) {
+                return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            }
+        }
+    }
+    
+    console.warn("No image data found in response parts.");
+    return ""; 
+  } catch (error) {
+    console.error("Image Gen Failed:", error);
+    // Return empty to allow UI fallback instead of crashing
+    return ""; 
   }
 };

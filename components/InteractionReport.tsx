@@ -1,10 +1,13 @@
+
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, ShieldCheck, AlertOctagon, Info, Utensils, Zap, CheckCircle, HelpCircle, Moon, Activity, Coffee, Sun, Sunrise, Sunset, Leaf, XCircle, Brain, Search, FileText } from 'lucide-react';
-import { AnalysisResult, Severity } from '../types';
+import { AnalysisResult, Severity, PatientDetails, Medication } from '../types';
 
 interface Props {
   result: AnalysisResult | null;
   isLoading: boolean;
+  patientDetails?: PatientDetails;
+  medications?: Medication[];
 }
 
 const FACTS = [
@@ -121,12 +124,14 @@ export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-full">
-      <div className="bg-slate-900 p-6 text-white flex-none">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <ShieldCheck className="w-6 h-6 text-teal-400" />
-          Safety Analysis Report
-        </h2>
-        <p className="text-slate-400 text-sm mt-1">{result.summary}</p>
+      <div className="bg-slate-900 p-6 text-white flex-none flex justify-between items-start">
+        <div>
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <ShieldCheck className="w-6 h-6 text-teal-400" />
+            Safety Analysis Report
+          </h2>
+          <p className="text-slate-400 text-sm mt-1">{result.summary}</p>
+        </div>
       </div>
 
       <div className="p-6 space-y-8 flex-1 overflow-y-auto">

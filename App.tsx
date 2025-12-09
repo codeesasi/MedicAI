@@ -5,7 +5,8 @@ import { MedicationList } from './components/MedicationList';
 import { PrescriptionScanner } from './components/PrescriptionScanner';
 import { InteractionReport } from './components/InteractionReport';
 import { MedicalChatBot } from './components/MedicalChatBot';
-import { IntroModal } from './components/IntroModal';
+import { TourOverlay, TourStep } from './components/TourOverlay';
+import { ReportPreviewModal } from './components/ReportPreviewModal';
 import { saveMedications, loadMedications } from './services/storage';
 import { analyzeInteractions, validateApiKey } from './services/gemini';
 import { Medication, AnalysisResult, PatientDetails, Vital } from './types';
@@ -23,6 +24,27 @@ const DEFAULT_VITALS: Vital[] = [
     { id: '4', key: 'Gender', value: '' },
 ];
 
+const TOUR_STEPS: TourStep[] = [
+    {
+        targetId: 'scanner-action-area',
+        title: 'Start Here',
+        description: 'Simply take a photo of your prescription or pill bottle. We will automatically extract the medication details.',
+        position: 'bottom'
+    },
+    {
+        targetId: 'nav-cabinet',
+        title: 'Your Digital Cabinet',
+        description: 'Once scanned, your medications appear here. You can also manually add items or edit details.',
+        position: 'right'
+    },
+    {
+        targetId: 'chatbot-fab',
+        title: 'AI Assistant',
+        description: 'Have a specific question? Tap here to chat with our medical AI assistant anytime.',
+        position: 'left'
+    }
+];
+
 export default function App() {
   const [medications, setMedications] = useState<Medication[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>(Tab.SCAN);
@@ -30,7 +52,10 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
-  const [showIntro, setShowIntro] = useState(false);
+  
+  // Onboarding State
+  const [showTour, setShowTour] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   // Patient State (Global to share between Scan and Cabinet)
   const [patientDetails, setPatientDetails] = useState<PatientDetails>(DEFAULT_VITALS);
@@ -47,10 +72,11 @@ export default function App() {
       setActiveTab(Tab.CABINET);
     }
 
-    // Check if user has seen intro
-    const hasSeenIntro = localStorage.getItem('medscript_intro_seen');
-    if (!hasSeenIntro) {
-      setShowIntro(true);
+    // Check if user has seen tour
+    const hasSeenTour = localStorage.getItem('medscript_tour_seen');
+    if (!hasSeenTour) {
+        // Small delay to ensure elements are mounted
+        setTimeout(() => setShowTour(true), 1000);
     }
   }, []);
 
@@ -78,6 +104,9 @@ export default function App() {
   const handleClearMedications = () => {
     setMedications([]);
     setAnalysisResult(null);
+    setPatientDetails(DEFAULT_VITALS);
+    setPatientConditions('');
+    setLocation('');
   };
 
   const handleScanComplete = (newMeds: Medication[], scannedDetails?: PatientDetails) => {
@@ -139,9 +168,9 @@ export default function App() {
     }
   };
 
-  const handleIntroComplete = () => {
-    localStorage.setItem('medscript_intro_seen', 'true');
-    setShowIntro(false);
+  const handleTourComplete = () => {
+      localStorage.setItem('medscript_tour_seen', 'true');
+      setShowTour(false);
   };
 
   const getPageTitle = () => {
@@ -179,6 +208,7 @@ export default function App() {
 
         <nav className="px-3 py-4 space-y-1 flex-1">
           <button
+            id="nav-scan"
             onClick={() => { setActiveTab(Tab.SCAN); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === Tab.SCAN ? 'bg-teal-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
           >
@@ -186,6 +216,7 @@ export default function App() {
             Scan Prescription
           </button>
           <button
+            id="nav-cabinet"
             onClick={() => { setActiveTab(Tab.CABINET); setSidebarOpen(false); }}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === Tab.CABINET ? 'bg-teal-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
           >
@@ -279,12 +310,20 @@ export default function App() {
                     setPatientConditions={setPatientConditions}
                     location={location}
                     setLocation={setLocation}
+                    // Report Props
+                    analysisResult={analysisResult}
+                    onGeneratePdf={() => setShowReportModal(true)}
                   />
                 </div>
 
                 {/* Right Column: Interaction Report */}
                 <div className="xl:col-span-2 h-auto xl:h-full min-h-0">
-                  <InteractionReport result={analysisResult} isLoading={isAnalyzing} />
+                  <InteractionReport 
+                    result={analysisResult} 
+                    isLoading={isAnalyzing} 
+                    patientDetails={patientDetails}
+                    medications={medications}
+                  />
                 </div>
               </div>
             )}
@@ -293,10 +332,25 @@ export default function App() {
         </div>
         
         {/* Floating Chat Bot */}
-        <MedicalChatBot />
+        <MedicalChatBot medications={medications} />
         
-        {/* Intro Modal for First Time Users */}
-        {showIntro && <IntroModal onComplete={handleIntroComplete} />}
+        {/* Guided Tour for New Users */}
+        <TourOverlay 
+            steps={TOUR_STEPS} 
+            isOpen={showTour} 
+            onComplete={handleTourComplete} 
+            onSkip={handleTourComplete} 
+        />
+
+        {/* PDF Generation Modal */}
+        {showReportModal && analysisResult && (
+            <ReportPreviewModal 
+                result={analysisResult} 
+                patientDetails={patientDetails}
+                medications={medications}
+                onClose={() => setShowReportModal(false)}
+            />
+        )}
       </main>
     </div>
   );

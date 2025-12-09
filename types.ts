@@ -75,3 +75,15 @@ export interface OcrResult {
   patientDetails: PatientDetails;
   confidence: number;
 }
+
+// Centralized AI Model Definitions
+export const AI_MODELS = {
+  // Complex reasoning and Agents (High Intelligence)
+  PRO: 'gemini-3-pro-preview',
+  // Fast tasks, fallbacks, and simple text (Low Latency)
+  FLASH: 'gemini-2.5-flash',
+  // Image generation
+  IMAGE: 'gemini-2.5-flash-image',
+  // Fast ORC and Quick response
+  PLUS: 'gemini-2.5-pro'
+} as const;

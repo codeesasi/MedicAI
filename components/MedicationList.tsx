@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse, MapPin, Loader2, User, Scale, Thermometer, Ruler, Droplet, Wind } from 'lucide-react';
-import { Medication, PatientDetails, Vital } from '../types';
+import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse, MapPin, Loader2, User, Scale, Thermometer, Ruler, Droplet, Wind, Download } from 'lucide-react';
+import { Medication, PatientDetails, Vital, AnalysisResult } from '../types';
 
 interface Props {
   medications: Medication[];
@@ -18,6 +18,10 @@ interface Props {
   setPatientConditions: (val: string) => void;
   location: string;
   setLocation: (val: string) => void;
+  
+  // New Props for PDF Report
+  analysisResult: AnalysisResult | null;
+  onGeneratePdf: () => void;
 }
 
 export const MedicationList: React.FC<Props> = ({ 
@@ -32,7 +36,9 @@ export const MedicationList: React.FC<Props> = ({
     patientConditions,
     setPatientConditions,
     location,
-    setLocation
+    setLocation,
+    analysisResult,
+    onGeneratePdf
 }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -50,6 +56,12 @@ export const MedicationList: React.FC<Props> = ({
   });
   
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  // Check if there is any data to clear
+  const hasData = medications.length > 0 || 
+                  patientDetails.some(v => v.value.trim() !== '') || 
+                  patientConditions.trim() !== '' || 
+                  location.trim() !== '';
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -226,17 +238,17 @@ export const MedicationList: React.FC<Props> = ({
           <Pill className="w-5 h-5 text-teal-600" />
           Medication Cabinet
         </h2>
-        <div className="flex items-center gap-2">
-           <span className="bg-teal-50 text-teal-700 px-3 py-1 rounded-full text-xs font-bold">
-            {medications.length} Active
+        <div className="flex items-center gap-3">
+           <span className="bg-teal-50 text-teal-700 px-3 py-1 rounded-full text-xs font-bold border border-teal-100">
+            {medications.length} Items
           </span>
-          {medications.length > 0 && (
+          {hasData && (
             <button 
               onClick={handleClearAll}
-              className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
-              title="Clear All Medications"
+              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              title="Clear Cabinet"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-5 h-5" />
             </button>
           )}
         </div>
@@ -531,25 +543,38 @@ export const MedicationList: React.FC<Props> = ({
             />
           </div>
           
-          <div className="flex gap-3">
-            <button 
-              onClick={() => { resetForm(); setIsFormOpen(true); }}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-teal-600 text-teal-600 rounded-lg hover:bg-teal-50 font-medium transition-colors shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add Manual
-            </button>
-            <button 
-              onClick={onAnalyzeInteractions}
-              disabled={!isReadyToCheck}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-bold text-white shadow-md transition-all
-                ${!isReadyToCheck
-                  ? 'bg-slate-300 cursor-not-allowed opacity-70' 
-                  : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'}`}
-            >
-              <Activity className="w-4 h-4" />
-              Check Safety
-            </button>
+          <div className="flex flex-col gap-3">
+             <div className="flex gap-3">
+                <button 
+                  onClick={() => { resetForm(); setIsFormOpen(true); }}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-white border border-teal-600 text-teal-600 rounded-lg hover:bg-teal-50 font-medium transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Manual
+                </button>
+                <button 
+                  onClick={onAnalyzeInteractions}
+                  disabled={!isReadyToCheck}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-bold text-white shadow-md transition-all
+                    ${!isReadyToCheck
+                      ? 'bg-slate-300 cursor-not-allowed opacity-70' 
+                      : 'bg-indigo-600 hover:bg-indigo-700 active:scale-95'}`}
+                >
+                  <Activity className="w-4 h-4" />
+                  Check Safety
+                </button>
+             </div>
+             
+             {/* PDF Report Button - Visible only when analysis is ready */}
+             {analysisResult && (
+                <button 
+                    onClick={onGeneratePdf}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 font-bold transition-all animate-in fade-in slide-in-from-top-1"
+                >
+                    <Download className="w-4 h-4" />
+                    Download PDF Report
+                </button>
+             )}
           </div>
       </div>
 
@@ -565,7 +590,7 @@ export const MedicationList: React.FC<Props> = ({
                 </div>
                 
                 <p className="text-slate-600 mb-6 leading-relaxed">
-                    Are you sure you want to remove all medications? This action cannot be undone.
+                    Are you sure you want to remove all medications and reset patient details? This action cannot be undone.
                 </p>
                 
                 <div className="flex gap-3 justify-end">
