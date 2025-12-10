@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import { Medication, AnalysisResult, PatientDetails, Vital, AI_MODELS, SUPPORTED_LANGUAGES } from '../types';
+import { Medication, AnalysisResult, PatientDetails, Vital, AI_MODELS } from '../types';
 
 // Helper to get initialized client at runtime
 const getAi = () => {
@@ -64,7 +64,7 @@ const generateId = () => Math.random().toString(36).substr(2, 9);
 
 /**
  * Workflow 1: Prescription Analysis (Vision + OCR)
- * Uses Gemini 3 Pro for high accuracy vision tasks
+ * Uses Gemini 2.5 Pro for high accuracy vision tasks
  */
 export const analyzePrescriptionImage = async (
   images: { base64: string, mimeType: string }[]

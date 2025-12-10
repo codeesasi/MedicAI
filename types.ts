@@ -85,8 +85,8 @@ export const AI_MODELS = {
   FLASH: 'gemini-2.5-flash',
   // Image generation
   IMAGE: 'gemini-2.5-flash-image',
-  // Fast ORC and Quick response (using 3-pro for better OCR)
-  PLUS: 'gemini-3-pro-preview',
+  // Fast ORC and Quick response (using 2.5-pro for better OCR)
+  PLUS: 'gemini-2.5-pro',
   // To identify language based on lication
   LANG: 'gemini-2.0-flash-lite'
 } as const;
