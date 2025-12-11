@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Menu, X, HeartPulse, Camera, Pill, AlertCircle } from 'lucide-react';
+import { Menu, X, HeartPulse, Camera, Pill, AlertCircle, ShieldAlert } from 'lucide-react';
 import { MedicationList } from './components/MedicationList';
 import { PrescriptionScanner } from './components/PrescriptionScanner';
 import { InteractionReport } from './components/InteractionReport';
@@ -230,10 +230,15 @@ export default function App() {
           </button>
         </nav>
 
-        <div className="p-6 bg-slate-800 flex-none">
-          <p className="text-xs text-slate-400 leading-relaxed">
-            <strong>Medical Disclaimer:</strong> This AI tool is for informational purposes only. Always consult a doctor before changing medication.
-          </p>
+        <div className="p-6 bg-slate-800 flex-none border-t border-slate-700">
+          <div className="flex items-start gap-2 text-xs text-slate-400 leading-relaxed">
+            <ShieldAlert className="w-4 h-4 flex-shrink-0 text-amber-500 mt-0.5" />
+            <p>
+              <strong>AI Disclaimer:</strong><br/>
+              This application uses Artificial Intelligence. Results can be inaccurate. 
+              Always consult a certified medical professional before taking any action.
+            </p>
+          </div>
         </div>
       </aside>
 

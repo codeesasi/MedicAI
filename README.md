@@ -117,6 +117,31 @@ We utilize a "Right Model for the Right Task" strategy to optimize for intellige
 
 ---
 
+## ⚖️ AI Governance & Safety Principles
+
+This project implements strict guardrails and ethical guidelines to ensure responsible AI usage in a healthcare context.
+
+<table width="100%">
+  <tr>
+    <td width="33%" valign="top">
+      <h4>🛑 Emergency Protocols</h4>
+      <p>System-level instructions force the AI to detect keywords related to medical emergencies (e.g., "chest pain", "suicide", "overdose"). In these cases, the AI <strong>immediately refuses analysis</strong> and directs the user to call Emergency Services (911/112).</p>
+    </td>
+    <td width="33%" valign="top">
+      <h4>🔒 Privacy & Data Minimization</h4>
+      <p><strong>Transient Processing:</strong> Images uploaded for OCR are processed in-memory and sent to the API without being stored on our servers.</p>
+      <p><strong>PII Protection:</strong> The AI is explicitly instructed <strong>not</strong> to request or store Personally Identifiable Information (names, phones, addresses).</p>
+    </td>
+    <td width="33%" valign="top">
+       <h4>👁️ Transparency & Limitations</h4>
+       <p><strong>Identity:</strong> The system clearly identifies as an "AI Assistant" and not a doctor.</p>
+       <p><strong>Non-Diagnosis:</strong> The AI is strictly prohibited from providing medical diagnoses. It only analyzes data based on pharmaceutical guidelines.</p>
+    </td>
+  </tr>
+</table>
+
+---
+
 ## 🛠️ Tech Stack
 
 - **Frontend:** React 19, TypeScript, Vite

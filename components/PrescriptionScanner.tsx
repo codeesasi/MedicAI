@@ -1,5 +1,6 @@
+
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, Upload, XCircle, Aperture, X, Crop, Check, RotateCw, Plus, Trash2, ArrowRight, Globe, Sliders, Move, ZoomIn, ZoomOut } from 'lucide-react';
+import { Camera, Upload, XCircle, Aperture, X, Crop, Check, RotateCw, Plus, Trash2, ArrowRight, Globe, Sliders, Move, ZoomIn, ZoomOut, Lock } from 'lucide-react';
 import { analyzePrescriptionImage, verifyMedicationSpelling, validateApiKey } from '../services/gemini';
 import { Medication, PatientDetails } from '../types';
 
@@ -931,6 +932,14 @@ export const PrescriptionScanner: React.FC<Props> = ({ onScanComplete }) => {
                 </div>
              )}
           </div>
+      )}
+
+      {/* AI Privacy Notice */}
+      {!isAnalyzing && scannedImages.length === 0 && (
+         <div className="mt-4 flex items-start gap-2 text-xs text-slate-400 bg-slate-50 p-2 rounded">
+             <Lock className="w-3 h-3 flex-shrink-0 mt-0.5" />
+             <p>Data Privacy: Images are processed securely by Google Gemini AI to extract text. No images are permanently stored on our servers.</p>
+         </div>
       )}
 
       <input 

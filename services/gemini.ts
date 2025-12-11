@@ -25,6 +25,16 @@ const SAFETY_SETTINGS: any[] = [
   { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
 ];
 
+// --- AI GOVERNANCE & SAFETY PROTOCOLS ---
+const GOVERNANCE_INSTRUCTIONS = `
+  CRITICAL SAFETY & GOVERNANCE PROTOCOLS:
+  1.  **Identity**: You are an AI Assistant, NOT a doctor or pharmacist. Never claim to be a human medical professional.
+  2.  **Emergency**: If the user mentions severe symptoms (chest pain, difficulty breathing, suicide, overdose, stroke), IMMEDIATELY tell them to call Emergency Services (911/112) and stop analysis.
+  3.  **Diagnosis**: Do NOT provide a medical diagnosis. Only analyze the provided data based on pharmaceutical guidelines.
+  4.  **Privacy**: Do not ask for Personally Identifiable Information (PII) like names, phone numbers, or addresses.
+  5.  **Uncertainty**: If a drug name is ambiguous or handwriting is unclear, explicitly state "Unknown" or "Unclear". Do not guess.
+`;
+
 // Robust JSON Extraction
 const extractJson = (text: string, type: 'array' | 'object'): any => {
   // 1. Remove Markdown code blocks (Case Insensitive)
@@ -74,8 +84,12 @@ export const analyzePrescriptionImage = async (
   console.log("AI ImageScan started with", modelId, "Image count:", images.length);
   
   const prompt = `
-    Extract data from these prescription images into a strict JSON Object.
+    ${GOVERNANCE_INSTRUCTIONS}
     
+    Task: Extract data from these prescription images into a strict JSON Object.
+    
+    Safety Rule: If the images do NOT contain a prescription, medication label, or medical report, return empty arrays. Do not hallucinate medications from non-medical images.
+
     1. "medications": Array of medications. Fields: name, dosage, frequency, duration, instructions, prescriber.
     2. "patient": Object containing patient vitals. Fields: age, weight, bloodPressure, gender. Use null or empty string if not clearly visible.
     
@@ -164,13 +178,15 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
     console.log("Attempting verification with Pro model (Search Enabled)...");
     const modelId = AI_MODELS.PLUS;
     const prompt = `
+      ${GOVERNANCE_INSTRUCTIONS}
       Act as a pharmacy auditor. Verify the spelling of these medication names using Google Search.
       Input: ${inputJson}
       
       Tasks:
       1. Search for the medication names to verify existence.
       2. Correct typos (e.g., "Lisnopril" -> "Lisinopril").
-      3. Return ONLY the corrected JSON Array.
+      3. If a name is completely unrecognizable or not a drug, leave it as is or mark as "Unknown". Do not guess random drugs.
+      4. Return ONLY the corrected JSON Array.
     `;
 
     const response = await ai.models.generateContent({
@@ -195,6 +211,7 @@ export const verifyMedicationSpelling = async (meds: Partial<Medication>[]): Pro
       console.log("Attempting fallback with Flash model...");
       const modelId = AI_MODELS.FLASH;
       const prompt = `
+        ${GOVERNANCE_INSTRUCTIONS}
         You are a medical data cleaner. Correct spelling errors in this medication list.
         Input: ${inputJson}
         Return strictly valid JSON Array.
@@ -233,6 +250,7 @@ const runClinicalSafetyAgent = async (
 ) => {
     const prompt = `
     Role: Clinical Safety Pharmacist Agent.
+    ${GOVERNANCE_INSTRUCTIONS}
     
     Task: Analyze the following medication list for Safety and Indications.
     Use Google Search to verify contraindications if necessary, but prioritize established medical guidelines.
@@ -274,6 +292,7 @@ const runWellnessAgent = async (
 ) => {
     const prompt = `
     Role: Local Wellness & Nutrition Agent.
+    ${GOVERNANCE_INSTRUCTIONS}
     
     Task: Create a location-based Diet and Lifestyle plan.
     Use Google Search to find local foods in "${context.location}" suitable for the patient's conditions.
@@ -377,7 +396,12 @@ export const sendChatMessage = async (currentMessage: string, history: { role: '
     const chat = ai.chats.create({
       model: modelId,
       config: {
-        systemInstruction: "You are MedScript Assistant, a helpful AI health companion. Provide clear, accurate, and safe medical information. Your advice should be professional yet easy to understand. Keep answers concise.",
+        systemInstruction: `
+          You are MedScript Assistant, a helpful AI health companion. 
+          ${GOVERNANCE_INSTRUCTIONS}
+          Provide clear, accurate, and safe medical information. 
+          Your advice should be professional yet easy to understand. Keep answers concise.
+        `,
         safetySettings: SAFETY_SETTINGS,
       },
       history: history.map(msg => ({

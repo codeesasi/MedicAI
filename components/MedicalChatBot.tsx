@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, X, Send, Bot, ChevronDown, Sparkles, RefreshCw, Trash2, ArrowRight } from 'lucide-react';
+import { MessageSquare, X, Send, Bot, ChevronDown, Sparkles, RefreshCw, Trash2, ArrowRight, ShieldAlert, Info } from 'lucide-react';
 import { sendChatMessage, validateApiKey } from '../services/gemini';
 import { Medication } from '../types';
 
@@ -329,7 +329,7 @@ export const MedicalChatBot: React.FC<Props> = ({ medications = [] }) => {
                 <h3 className="font-bold text-sm tracking-wide">MedScript AI</h3>
                 <div className="flex items-center gap-1.5">
                    <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"></span>
-                   <p className="text-[10px] text-teal-100 font-medium opacity-90">Assistant Online</p>
+                   <p className="text-[10px] text-teal-100 font-medium opacity-90">AI Assistant Online</p>
                 </div>
               </div>
             </div>
@@ -349,6 +349,16 @@ export const MedicalChatBot: React.FC<Props> = ({ medications = [] }) => {
                   <ChevronDown className="w-5 h-5" />
                 </button>
             </div>
+          </div>
+          
+          {/* AI GOVERNANCE & SAFETY BANNER */}
+          <div className="bg-red-50 px-4 py-2 border-b border-red-100 flex items-start gap-2 text-[11px] text-red-800 leading-snug flex-none">
+              <ShieldAlert className="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-red-600" />
+              <p>
+                  <strong>Medical Disclaimer:</strong> I am an AI, not a doctor. 
+                  If you have a medical emergency, call 911 immediately.
+                  Do not rely on this chat for life-threatening situations.
+              </p>
           </div>
 
           {/* Messages Area */}
@@ -445,8 +455,8 @@ export const MedicalChatBot: React.FC<Props> = ({ medications = [] }) => {
           
           <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-center">
              <p className="text-[10px] text-slate-400 font-medium flex items-center justify-center gap-1">
-                <Sparkles className="w-3 h-3 text-indigo-400" />
-                AI can make mistakes. Consult a doctor for medical decisions.
+                <Info className="w-3 h-3 text-indigo-400" />
+                AI Governance: Data processed by Gemini 3 Pro.
              </p>
           </div>
       </div>

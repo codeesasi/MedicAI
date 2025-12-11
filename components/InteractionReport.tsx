@@ -175,9 +175,14 @@ export const InteractionReport: React.FC<Props> = ({ result, isLoading }) => {
           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">Drug Interactions</h3>
           <div className="space-y-3">
             {result.interactions.length === 0 ? (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-3">
-                <ShieldCheck className="w-5 h-5 text-green-600" />
-                <span className="text-green-800 font-medium">No known drug-drug interactions found.</span>
+              <div className="p-4 bg-green-50 border border-green-200 rounded-lg flex flex-col gap-1">
+                 <div className="flex items-center gap-3">
+                    <ShieldCheck className="w-5 h-5 text-green-600" />
+                    <span className="text-green-800 font-medium">No critical interactions detected by AI.</span>
+                 </div>
+                 <p className="text-xs text-green-700/80 pl-8">
+                     * This is an automated check and may not cover all rare scenarios. Always consult your doctor.
+                 </p>
               </div>
             ) : (
               result.interactions.map(interaction => (
