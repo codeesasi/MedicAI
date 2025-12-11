@@ -8,7 +8,7 @@ import { MedicalChatBot } from './components/MedicalChatBot';
 import { TourOverlay, TourStep } from './components/TourOverlay';
 import { ReportPreviewModal } from './components/ReportPreviewModal';
 import { saveMedications, loadMedications } from './services/storage';
-import { analyzeInteractions, validateApiKey, translateAnalysisResult } from './services/gemini';
+import { analyzeInteractions, validateApiKey } from './services/gemini';
 import { Medication, AnalysisResult, PatientDetails, Vital } from './types';
 
 // Tab Enum
@@ -52,11 +52,6 @@ export default function App() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [appError, setAppError] = useState<string | null>(null);
-  
-  // Translation State
-  const [translatedResult, setTranslatedResult] = useState<AnalysisResult | null>(null);
-  const [isTranslating, setIsTranslating] = useState(false);
-  const [currentLanguage, setCurrentLanguage] = useState('English');
   
   // Onboarding State
   const [showTour, setShowTour] = useState(false);
@@ -115,8 +110,6 @@ export default function App() {
   
   const resetAnalysis = () => {
     setAnalysisResult(null);
-    setTranslatedResult(null);
-    setCurrentLanguage('English');
     setAppError(null);
   };
 
@@ -168,8 +161,6 @@ export default function App() {
 
     setIsAnalyzing(true);
     setAnalysisResult(null);
-    setTranslatedResult(null);
-    setCurrentLanguage('English');
     
     try {
       const result = await analyzeInteractions(medications, patientConditions, location, patientDetails);
@@ -179,28 +170,6 @@ export default function App() {
       setAppError(e.message || "Analysis failed. Please check your connection and try again.");
     } finally {
       setIsAnalyzing(false);
-    }
-  };
-
-  const handleTranslate = async (lang: string) => {
-    if (lang === 'English') {
-        setTranslatedResult(null);
-        setCurrentLanguage('English');
-        return;
-    }
-
-    if (!analysisResult) return;
-    
-    setIsTranslating(true);
-    try {
-        const translated = await translateAnalysisResult(analysisResult, lang);
-        setTranslatedResult(translated);
-        setCurrentLanguage(lang);
-    } catch (e: any) {
-        console.error(e);
-        setAppError(`Translation to ${lang} failed. Please try again.`);
-    } finally {
-        setIsTranslating(false);
     }
   };
 
@@ -349,17 +318,13 @@ export default function App() {
                     // Report Props
                     analysisResult={analysisResult}
                     onGeneratePdf={() => setShowReportModal(true)}
-                    // Translation Props
-                    onTranslate={handleTranslate}
-                    isTranslating={isTranslating}
-                    currentLanguage={currentLanguage}
                   />
                 </div>
 
-                {/* Right Column: Interaction Report (Shows Translated Result if available) */}
+                {/* Right Column: Interaction Report */}
                 <div className="xl:col-span-2 h-auto xl:h-full min-h-0">
                   <InteractionReport 
-                    result={translatedResult || analysisResult} 
+                    result={analysisResult} 
                     isLoading={isAnalyzing} 
                     patientDetails={patientDetails}
                     medications={medications}
@@ -385,7 +350,7 @@ export default function App() {
         {/* PDF Generation Modal */}
         {showReportModal && analysisResult && (
             <ReportPreviewModal 
-                result={translatedResult || analysisResult} 
+                result={analysisResult} 
                 patientDetails={patientDetails}
                 medications={medications}
                 onClose={() => setShowReportModal(false)}

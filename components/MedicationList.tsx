@@ -1,8 +1,7 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse, MapPin, Loader2, User, Scale, Thermometer, Ruler, Droplet, Wind, Download, Languages, ArrowRight, ArrowLeft, Check, Sparkles, Globe } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Trash2, Pill, Mic, Activity, Edit2, RotateCcw, Save, X, AlertTriangle, Stethoscope, Clock, Calendar, FileText, Smartphone, Keyboard, HeartPulse, MapPin, Loader2, User, Scale, Thermometer, Ruler, Droplet, Wind, Download, Sun, Moon, Sunset } from 'lucide-react';
 import { Medication, PatientDetails, Vital, AnalysisResult } from '../types';
-import { detectLanguageFromLocation } from '../services/gemini';
 
 interface Props {
   medications: Medication[];
@@ -20,12 +19,9 @@ interface Props {
   location: string;
   setLocation: (val: string) => void;
   
-  // New Props for PDF Report & Translation
+  // New Props for PDF Report
   analysisResult: AnalysisResult | null;
   onGeneratePdf: () => void;
-  onTranslate: (lang: string) => void;
-  isTranslating: boolean;
-  currentLanguage: string;
 }
 
 export const MedicationList: React.FC<Props> = ({ 
@@ -42,23 +38,13 @@ export const MedicationList: React.FC<Props> = ({
     location,
     setLocation,
     analysisResult,
-    onGeneratePdf,
-    onTranslate,
-    isTranslating,
-    currentLanguage
+    onGeneratePdf
 }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   
-  // Translation Popup State
-  const [showTranslatePopup, setShowTranslatePopup] = useState(false);
-  const [targetLang, setTargetLang] = useState('');
-  const [suggestedLanguage, setSuggestedLanguage] = useState<string | null>(null);
-  const [isDetectingLang, setIsDetectingLang] = useState(false);
-  const popupRef = useRef<HTMLDivElement>(null);
-
   // Vitals Speech State
   const [listeningVitalId, setListeningVitalId] = useState<string | null>(null);
   
@@ -79,41 +65,6 @@ export const MedicationList: React.FC<Props> = ({
                   patientDetails.some(v => v.value.trim() !== '') || 
                   patientConditions.trim() !== '' || 
                   location.trim() !== '';
-
-  // Close popup when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
-        setShowTranslatePopup(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Smart Language Detection when location changes
-  useEffect(() => {
-     const timer = setTimeout(async () => {
-         if (location.length > 3) {
-             setIsDetectingLang(true);
-             try {
-                const detected = await detectLanguageFromLocation(location);
-                if (detected && detected !== 'English') {
-                    setSuggestedLanguage(detected);
-                    setTargetLang(detected); // Auto-fill suggestion
-                } else {
-                    setSuggestedLanguage(null);
-                }
-             } catch (e) {
-                console.error("Lang detection error", e);
-             } finally {
-                setIsDetectingLang(false);
-             }
-         }
-     }, 1500);
-
-     return () => clearTimeout(timer);
-  }, [location]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -304,13 +255,33 @@ export const MedicationList: React.FC<Props> = ({
     return new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
   
+  // Dynamic Greeting Logic
+  const getGreetingData = () => {
+    const hour = new Date().getHours();
+    let text = "Good Morning";
+    let icon = <Sun className="w-4 h-4 text-orange-400" />;
+    
+    if (hour >= 12 && hour < 17) {
+        text = "Good Afternoon";
+        icon = <Sun className="w-4 h-4 text-yellow-500" />;
+    } else if (hour >= 17) {
+        text = "Good Evening";
+        icon = <Moon className="w-4 h-4 text-indigo-400" />;
+    }
+
+    if (location) {
+        const city = location.split(',')[0].trim();
+        if (city) text = `${text} from ${city}`;
+    }
+
+    return { text, icon };
+  };
+
+  const greeting = getGreetingData();
+
   const hasAge = patientDetails.some(v => v.key.toLowerCase().includes('age') && v.value);
   const hasWeight = patientDetails.some(v => v.key.toLowerCase().includes('weight') && v.value);
   const isReadyToCheck = medications.length > 0 && patientConditions.trim() && hasAge && hasWeight;
-
-  // Determine translation mode and direction
-  const isReverting = targetLang.toLowerCase() === 'english' || targetLang === '';
-  const langCode = targetLang && targetLang.length >= 2 ? targetLang.slice(0, 2).toUpperCase() : 'EN';
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-slate-100 flex flex-col h-full relative">
@@ -320,94 +291,6 @@ export const MedicationList: React.FC<Props> = ({
           Medication Cabinet
         </h2>
         <div className="flex items-center gap-3">
-           
-           {/* Translation Button & Popup */}
-           {analysisResult && (
-             <div className="relative" ref={popupRef}>
-                <button 
-                   onClick={() => setShowTranslatePopup(!showTranslatePopup)}
-                   className={`p-2 rounded-lg transition-colors flex items-center justify-center gap-2 border
-                      ${currentLanguage !== 'English' 
-                          ? 'bg-indigo-50 border-indigo-200 text-indigo-700' 
-                          : 'border-transparent text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-100'}`}
-                   title="Translate Report"
-                >
-                   {isTranslating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Languages className="w-4 h-4" />}
-                   {currentLanguage !== 'English' && <span className="text-xs font-bold">{currentLanguage.slice(0,2).toUpperCase()}</span>}
-                </button>
-
-                {/* Modern Popup */}
-                {showTranslatePopup && (
-                    <div className="absolute top-full right-0 mt-3 w-72 bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 ring-1 ring-slate-900/5 p-4 origin-top-right z-50 animate-in fade-in zoom-in-95 duration-200">
-                        <div className="flex justify-between items-center mb-4">
-                           <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                              <Sparkles className="w-3 h-3 text-indigo-500" /> Translation Agent
-                           </h4>
-                           <button onClick={() => setShowTranslatePopup(false)} className="text-slate-400 hover:text-slate-600">
-                              <X className="w-3 h-3" />
-                           </button>
-                        </div>
-                        
-                        <div className="space-y-4">
-                            <div className="relative">
-                                {/* Dynamic Icon Inside Input */}
-                                <div className="absolute left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold border border-indigo-200">
-                                    {langCode}
-                                </div>
-                                <input 
-                                   autoFocus
-                                   type="text" 
-                                   placeholder="Type Language..."
-                                   value={targetLang}
-                                   onChange={(e) => setTargetLang(e.target.value)}
-                                   className="w-full text-sm py-2.5 pl-11 pr-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 focus:outline-none placeholder-slate-400 transition-all"
-                                />
-                            </div>
-
-                            {/* Suggestion Chip */}
-                            {suggestedLanguage && suggestedLanguage !== targetLang && (
-                                <button 
-                                    onClick={() => setTargetLang(suggestedLanguage)}
-                                    className="text-xs w-full flex items-center gap-2 p-2 bg-gradient-to-r from-teal-50 to-indigo-50 border border-teal-100 rounded-lg text-teal-700 hover:shadow-sm transition-all text-left"
-                                >
-                                    <Globe className="w-3 h-3 text-teal-500" />
-                                    <span>
-                                        Suggestion: <strong>{suggestedLanguage}</strong>
-                                    </span>
-                                </button>
-                            )}
-                            
-                            <button
-                               onClick={() => {
-                                   onTranslate(targetLang || 'English');
-                               }}
-                               disabled={isTranslating}
-                               className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-white font-bold shadow-lg transition-all active:scale-95 group
-                                   ${isReverting ? 'bg-slate-500 hover:bg-slate-600' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                            >
-                               <span className="text-xs">
-                                 {isReverting ? 'Revert to English' : `Translate to ${targetLang || '...'}`}
-                               </span>
-                               
-                               {isTranslating ? (
-                                   <Loader2 className="w-4 h-4 animate-spin" />
-                               ) : (
-                                   isReverting ? (
-                                       <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-1" />
-                                   ) : (
-                                       <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                                   )
-                               )}
-                            </button>
-                        </div>
-                        
-                        {/* Decorative tail */}
-                        <div className="absolute -top-1.5 right-4 w-3 h-3 bg-white/95 border-t border-l border-slate-200 rotate-45 transform"></div>
-                    </div>
-                )}
-             </div>
-           )}
-
            <span className="bg-teal-50 text-teal-700 px-3 py-1 rounded-full text-xs font-bold border border-teal-100">
             {medications.length} Items
           </span>
@@ -608,6 +491,12 @@ export const MedicationList: React.FC<Props> = ({
       <div className="p-4 bg-slate-50 border-t border-slate-100 flex-none space-y-4">
           
           <div>
+             {/* Dynamic Greeting */}
+             <div className="mb-3 px-3 py-2 bg-gradient-to-r from-teal-50 to-indigo-50 border border-teal-100 rounded-lg flex items-center gap-2 text-sm font-medium text-teal-700">
+                 {greeting.icon}
+                 <span>{greeting.text}!</span>
+             </div>
+
              <div className="flex items-center justify-between mb-2">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
                    <User className="w-4 h-4 text-teal-500" /> Patient Details
@@ -691,11 +580,6 @@ export const MedicationList: React.FC<Props> = ({
                     {isLocating ? <Loader2 className="w-4 h-4 animate-spin" /> : <MapPin className="w-4 h-4" />}
                 </button>
             </div>
-            {isDetectingLang && (
-                <div className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
-                    <Loader2 className="w-3 h-3 animate-spin" /> Detecting local language...
-                </div>
-            )}
           </div>
 
           <div>

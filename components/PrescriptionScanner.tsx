@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, Upload, XCircle, Aperture, X, Crop, Check, RotateCw, Plus, Trash2, ArrowRight, Globe, Sliders, Move, ZoomIn, ZoomOut } from 'lucide-react';
 import { analyzePrescriptionImage, verifyMedicationSpelling, validateApiKey } from '../services/gemini';
@@ -173,7 +172,7 @@ export const PrescriptionScanner: React.FC<Props> = ({ onScanComplete }) => {
       }, 100);
     } catch (err) {
       console.error(err);
-      setError("Camera access denied. Please allow camera permissions or upload a file.");
+      setError("Camera access denied. Please check your browser settings to allow camera access, or try using the 'Upload File' option instead.");
     }
   };
 
