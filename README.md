@@ -107,11 +107,15 @@ We utilize a "Right Model for the Right Task" strategy to optimize for intellige
       <td><code>gemini-2.5-flash-image</code></td>
       <td>Fast generation of abstract medical vector graphics for the PDF report.</td>
     </tr>
-     <tr>
       <td><strong>Language Detection</strong></td>
       <td><code>gemini-2.0-flash-lite</code></td>
       <td>Ultra-fast, cost-effective model for simple classification tasks based on location.</td>
     </tr>
+     <tr>
+      <td><strong>Pdf generation</strong></td>
+      <td><code>gemini-2.0-flash-image</code></td>
+      <td>Generating custom images with help of nano-banana</td>
+    </tr>    
   </tbody>
 </table>
 
